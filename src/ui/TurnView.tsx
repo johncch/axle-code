@@ -50,7 +50,9 @@ export function TurnView({ turn, nested = false }: { turn: Turn; nested?: boolea
           <PartView key={part.id} part={part} />
         ))}
         {turn.status === "error" && !isUser ? (
-          <Text color="red">[turn ended with error]</Text>
+          <Text color="red">
+            {turn.error ? `[${turn.error.type} error: ${turn.error.message}]` : "[turn ended with error]"}
+          </Text>
         ) : null}
         {turn.status === "cancelled" && !isUser ? (
           <Text color="yellow">[cancelled]</Text>

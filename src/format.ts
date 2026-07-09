@@ -1,20 +1,9 @@
-import type { AgentErrorResult } from "@fifthrevision/axle";
+import type { AxleFailure } from "@fifthrevision/axle";
 
-type GenerateError = AgentErrorResult["error"];
-
-// GenerateError is a discriminated union on `kind`; only some variants carry a
-// top-level `message`, so a UI must narrow before displaying.
-export function formatGenerateError(error: GenerateError): string {
-  switch (error.kind) {
-    case "model":
-      return `model error: ${error.error.error.message}`;
-    case "tool":
-      return `tool error (${error.error.name}): ${error.error.message}`;
-    case "parse":
-      return `parse error: ${error.message}`;
-    default: {
-      const exhaustive: never = error;
-      return String(exhaustive);
-    }
-  }
+// As of Axle 0.26.1 every AxleFailure variant carries a uniform `.message`, so
+// a UI can render the reason without narrowing. We keep the `kind` (and tool
+// name) as a short prefix for context.
+export function formatGenerateError(error: AxleFailure): string {
+  const label = error.kind === "tool" ? `tool error (${error.error.name})` : `${error.kind} error`;
+  return `${label}: ${error.message}`;
 }

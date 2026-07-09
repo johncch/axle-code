@@ -35,8 +35,9 @@ run shell commands, and search the working directory.
 | `Ctrl+C` | quit |
 
 Switching models mid-conversation carries the history across via
-`snapshot()`/restore. See `FINDINGS.md` for provider caveats (e.g. native
-OpenAI rejects optional tool params; some Gemini model ids 404).
+`snapshot()`/restore. See `FINDINGS.md` for the UI-contract notes gathered while
+building this (several were fixed in Axle 0.26.1, incl. cross-provider tool
+schemas and turn-level error surfacing).
 
 ## Models
 
@@ -46,7 +47,7 @@ set:
 
 - **anthropic** · `claude-sonnet-5`
 - **openai** · `gpt-5.4`
-- **gemini** · `gemini-3.5-flash`, `gemini-3.5-pro`
+- **gemini** · `gemini-3.5-flash`
 - **openrouter** (via `chatCompletions`) · `z-ai/glm-5.2`,
   `deepseek/deepseek-v4-pro`, `qwen/qwen3.7-max`, `minimax/minimax-m3`
 

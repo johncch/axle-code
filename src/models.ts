@@ -38,7 +38,7 @@ const PROVIDERS: ProviderSpec[] = [
     label: "gemini",
     keyEnv: "GEMINI_API_KEY",
     make: gemini,
-    models: ["gemini-3.5-flash", "gemini-3.5-pro"],
+    models: ["gemini-3.5-flash"],
   },
   {
     label: "openrouter",

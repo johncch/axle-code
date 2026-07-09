@@ -22,13 +22,15 @@ synchronous `AgentResult.turn` / `AxleAgentAbortError.turn`, and (3) the
 purely event-driven host be able to opt out of internal turn storage to avoid
 paying for state it never reads?
 
-### 😖 `AgentErrorResult.error` (`GenerateError`) has no uniform `message`
-`GenerateError` is a discriminated union on `kind` (`model` | `tool` |
-`parse`), and only `tool`/`parse` carry a top-level `message`; the `model`
-variant nests it at `error.error.error.message`. A UI that wants "just show me
-the error string" must hand-write a narrowing switch (see `src/format.ts`).
-Consider exposing a `message` getter or a `formatError()` helper from the
-package so every consumer doesn't reinvent it.
+### ✅ (resolved in 0.26.1) `AgentErrorResult.error` had no uniform `message`
+`GenerateError` was a discriminated union on `kind` (`model` | `tool` |
+`parse`), and only `tool`/`parse` carried a top-level `message`; the `model`
+variant nested it at `error.error.error.message`. A UI that wanted "just show me
+the error string" had to hand-write a narrowing switch.
+**Fixed in 0.26.1:** the type is renamed `AxleFailure` (with `GenerateError`
+kept as a deprecated alias) and **every** variant now carries a uniform
+`.message`. Our `src/format.ts` collapsed from a three-arm narrowing switch to a
+single `error.message` read (kind kept only as a display prefix).
 
 ### ✅ (retracted) "emit chunk boundaries are arbitrary" is NOT a renderer issue
 Original worry: `ctx.emit(string)` chunks arrive on arbitrary OS-pipe
@@ -71,9 +73,15 @@ sharp edge worth hardening:
   current turn state (like `session:restore`) would make late subscription safe
   and support components that mount mid-conversation.
 
-### 🐛 OpenAI provider hardcodes `strict: true` → any `z.optional()` tool param is rejected
-Building the `/model` switcher (cross-provider) surfaced this: switching to any
-OpenAI model 400s at request time:
+### ✅ (resolved in 0.26.1) OpenAI provider hardcoded `strict: true` → any `z.optional()` tool param was rejected
+**Fixed in 0.26.1:** `prepareTools` now computes `strict` per tool via
+`allPropertiesRequired(parameters)` — strict stays on only when every property
+(recursively) is required and `additionalProperties:false`, and drops to
+`false` the moment any `z.optional()` field appears. Our `edit_file`,
+`bash`, `list_dir`, and `grep` tools now work on native OpenAI.
+
+Original report — building the `/model` switcher (cross-provider) surfaced this:
+switching to any OpenAI model 400s at request time:
 ```
 Invalid schema for function 'edit_file': 'required' is required to be … an
 array including every key in properties. Missing 'replace_all'.
@@ -109,28 +117,27 @@ restores `agent.snapshot()` into `new Agent(config, session)`. Verified
 switch (`context carried across switch: YES ✔`), with the UI's own accumulator
 keeping scrollback intact. This is the intended and working path.
 
-### 😖 Model enums list ids that aren't available for a given key
-`Object.values(GeminiModels)` includes `gemini-3.5-pro`, which 404s ("Not
-Found") for the configured key while `gemini-3.5-flash` (the default) works. A
+### 😖 Model enums list ids that aren't available for a given key (partly addressed in 0.26.1)
+`Object.values(GeminiModels)` included `gemini-3.5-pro`, which 404s ("Not
+Found") for the configured key while `gemini-3.5-flash` (the default) works.
+**0.26.1 removed `gemini-3.5-pro` from the enum**, so this specific dead entry
+is gone (we dropped it from `src/models.ts` too). The general point stands: A
 naive "list every enum value" catalog (what the switcher does) therefore
 contains dead entries. Not an Axle bug per se, but a reminder that the `Models`
 enums are a superset of what any single account/key can call — a UI that
 enumerates them needs to tolerate per-model availability errors (ours does:
 the failed send surfaces as an error turn, no crash).
 
-### 🐛 Turn-level (model) error message is not in the turn/event fold — only in `send()`'s result
-A turn that fails at the model level gets `status: "error"` (via `turn:end`),
-but the *message* is dropped: `TurnAccumulator`'s `case "error"` does
-`return this.handled(event)` without storing `event.error` anywhere, and the
-`Turn` type has no error field. Tool-level errors *are* retained (in
-`ActionResult`), but a model/provider error is not. Consequence: a renderer that
-folds only the event stream can show **that** a turn errored but not **why** —
-to display the reason you must separately capture `AgentErrorResult.error` from
-`send().final` (which is exactly what `useAgent` does via `lastError`). For a
-pure event-driven/remote UI (no access to the send result), the error reason is
-unrecoverable. Suggest either storing the error on the turn (a `Turn.error?`
-field) or having the accumulator attach the last `error` event to the active
-turn.
+### ✅ (resolved in 0.26.1) Turn-level (model) error message was not in the turn/event fold
+Previously a turn that failed at the model level got `status: "error"` (via
+`turn:end`) but the *message* was dropped: `TurnAccumulator`'s `case "error"`
+did `return this.handled(event)` and the `Turn` type had no error field, so a
+pure event-driven/remote UI could see **that** a turn errored but not **why**.
+**Fixed in 0.26.1** exactly as suggested: `Turn` gained an
+`error?: { type; message }` field, the `error` event now carries a `turnId`, and
+the accumulator folds it onto the turn (`updateTurn(... error: event.error)`).
+`src/ui/TurnView.tsx` now renders the reason straight from `turn.error` — no
+dependence on `send().final`, so the wire-only path recovers the message too.
 
 ### 😖 `ContextUsage.limit` is never populated → UIs can't show "% of context used"
 `agent.context()` returns `total` reliably but `limit`/`free` only when a

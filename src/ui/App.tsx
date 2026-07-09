@@ -3,6 +3,7 @@ import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import React, { useEffect, useMemo, useState } from "react";
 import type { Agent, ContextUsage } from "@fifthrevision/axle";
+import { writeConfig } from "../config.js";
 import { findEntry, type ModelEntry } from "../models.js";
 import { listSessions, loadSession, saveSession } from "../session.js";
 import { AnnotationBar } from "./AnnotationBar.js";
@@ -14,6 +15,26 @@ export interface AppProps {
   catalog: ModelEntry[];
   initialEntry: ModelEntry;
   createAgent: (entry: ModelEntry, session?: Awaited<ReturnType<Agent["snapshot"]>>) => Agent;
+}
+
+const COMMANDS: { name: string; desc: string }[] = [
+  { name: "/model", desc: "switch model (picker, or /model <substr>)" },
+  { name: "/compact", desc: "summarize + shrink the conversation" },
+  { name: "/save", desc: "save the session [name]" },
+  { name: "/load", desc: "restore a saved session [name]" },
+  { name: "/sessions", desc: "list saved sessions" },
+  { name: "/index", desc: "demo a host annotation lifecycle" },
+  { name: "/exit", desc: "quit" },
+  { name: "/quit", desc: "quit" },
+];
+
+function longestCommonPrefix(values: string[]): string {
+  if (values.length === 0) return "";
+  let prefix = values[0];
+  for (const value of values.slice(1)) {
+    while (!value.startsWith(prefix)) prefix = prefix.slice(0, -1);
+  }
+  return prefix;
 }
 
 export function App({ catalog, initialEntry, createAgent }: AppProps) {
@@ -30,9 +51,44 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
   const { exit } = useApp();
 
   const items = useMemo(
-    () => catalog.map((e) => ({ label: e.label, value: e.id, key: e.id })),
+    () =>
+      catalog.map((e) => ({
+        label: e.available ? e.label : `${e.label}  (unavailable — set ${e.keyEnv})`,
+        value: e.id,
+        key: e.id,
+      })),
     [catalog],
   );
+
+  const availableByLabel = useMemo(
+    () => new Map(catalog.map((e) => [e.id, e.available])),
+    [catalog],
+  );
+
+  // Custom picker row: unavailable models render gray and dim. Stable across
+  // renders (catalog never changes) so the SelectInput selection isn't reset.
+  const ModelItem = useMemo(() => {
+    function Item({ isSelected, label, value }: { isSelected?: boolean; label: string; value?: string }) {
+      if (value && availableByLabel.get(value) === false) {
+        return (
+          <Text color="gray" dimColor>
+            {label}
+          </Text>
+        );
+      }
+      return <Text color={isSelected ? "cyan" : undefined}>{label}</Text>;
+    }
+    return Item;
+  }, [availableByLabel]);
+
+  // Slash-command autocomplete: only while typing the command word itself
+  // (a leading "/", no space yet).
+  const suggestions = useMemo(() => {
+    if (!input.startsWith("/") || input.includes(" ")) return [];
+    const q = input.toLowerCase();
+    const matches = COMMANDS.filter((c) => c.name.startsWith(q));
+    return matches.length === 1 && matches[0].name === input ? [] : matches;
+  }, [input]);
 
   const context = useMemo<ContextUsage | null>(() => {
     try {
@@ -71,6 +127,17 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
         cancel();
         setCancelling(true);
       }
+      return;
+    }
+    // Tab completes the slash command: to the single match (+ space for args),
+    // else to the longest shared prefix.
+    if (key.tab && mode === "input" && suggestions.length > 0) {
+      if (suggestions.length === 1) {
+        setInput(suggestions[0].name + " ");
+      } else {
+        const prefix = longestCommonPrefix(suggestions.map((s) => s.name));
+        if (prefix.length > input.length) setInput(prefix);
+      }
     }
   });
 
@@ -80,6 +147,10 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
   }, [status, cancelling]);
 
   async function switchModel(next: ModelEntry) {
+    if (!next.available || !next.provider) {
+      setNotice(`${next.label} needs credentials — set ${next.keyEnv} and relaunch.`);
+      return;
+    }
     if (next.id === entry.id) {
       setNotice(`Already on ${next.label}.`);
       return;
@@ -95,6 +166,8 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
       setAgent(nextAgent);
       setEntry(next);
       setNotice(`Switched to ${next.label}.`);
+      // Remember the choice so the next launch starts here.
+      void writeConfig({ defaultModel: next.id });
     } catch (error) {
       setNotice(`Switch failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -160,9 +233,10 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
       return;
     }
     if (trimmed.startsWith("/model ")) {
-      const match = findEntry(catalog, trimmed.slice("/model ".length));
-      if (match) void switchModel(match);
-      else setNotice(`No model matches "${trimmed.slice("/model ".length).trim()}".`);
+      const query = trimmed.slice("/model ".length).trim();
+      const match = findEntry(catalog, query);
+      if (!match) setNotice(`No model matches "${query}".`);
+      else void switchModel(match);
       return;
     }
     if (trimmed === "/save" || trimmed.startsWith("/save ")) {
@@ -221,20 +295,27 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
           <Text color="cyan">Select a model (↑/↓, Enter to choose, Esc to cancel):</Text>
           <SelectInput
             items={items}
-            limit={8}
+            itemComponent={ModelItem}
+            limit={12}
             initialIndex={Math.max(
               0,
               items.findIndex((i) => i.value === entry.id),
             )}
             onSelect={(item) => {
               const next = catalog.find((e) => e.id === item.value);
+              if (!next) return;
+              if (!next.available) {
+                // Not selectable — keep the picker open and say why.
+                setNotice(`${next.label} needs credentials — set ${next.keyEnv} and relaunch.`);
+                return;
+              }
               setMode("input");
-              if (next) void switchModel(next);
+              void switchModel(next);
             }}
           />
         </Box>
       ) : (
-        <Box marginTop={1}>
+        <Box flexDirection="column" marginTop={1}>
           {busy ? (
             <Text color="cyan">
               {switching
@@ -246,15 +327,32 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
                     : "…working (Esc to cancel)"}
             </Text>
           ) : (
-            <Box>
-              <Text color="blue">❯ </Text>
-              <TextInput
-                value={input}
-                onChange={setInput}
-                onSubmit={onSubmit}
-                placeholder="Ask me… (/model to switch, /exit to quit)"
-              />
-            </Box>
+            <>
+              <Box>
+                <Text color="blue">❯ </Text>
+                <TextInput
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={onSubmit}
+                  placeholder="Ask me… (/model to switch, /exit to quit)"
+                />
+              </Box>
+              {suggestions.length > 0 ? (
+                <Box flexDirection="column" marginLeft={2}>
+                  {suggestions.map((s) => (
+                    <Box key={s.name}>
+                      <Box width={12}>
+                        <Text color="cyan">{s.name}</Text>
+                      </Box>
+                      <Text color="gray">{s.desc}</Text>
+                    </Box>
+                  ))}
+                  <Text color="gray" dimColor>
+                    Tab to complete
+                  </Text>
+                </Box>
+              ) : null}
+            </>
           )}
         </Box>
       )}

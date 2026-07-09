@@ -7,8 +7,13 @@ export interface ModelEntry {
   id: string;
   providerLabel: string;
   model: string;
-  provider: AIProvider;
+  /** Undefined when the provider's key is missing (entry is unavailable). */
+  provider?: AIProvider;
+  /** Env var that supplies this provider's key. */
+  keyEnv: string;
   label: string;
+  /** True when the provider key is set, so the model can actually be used. */
+  available: boolean;
 }
 
 interface ProviderSpec {
@@ -54,43 +59,55 @@ const PROVIDERS: ProviderSpec[] = [
 ];
 
 /**
- * Build the list of selectable models from whichever provider keys are present.
- * One provider instance is created per provider and shared across its models.
+ * Build the full model catalog. Every provider's models are listed; those whose
+ * key is missing are marked `available: false` (no provider instance) so the UI
+ * can show them grayed out. One provider instance is shared across its models.
  */
 export function buildCatalog(): ModelEntry[] {
   loadEnv();
   const entries: ModelEntry[] = [];
   for (const spec of PROVIDERS) {
     const key = process.env[spec.keyEnv];
-    if (!key) continue;
-    const provider = spec.make(key);
+    const provider = key ? spec.make(key) : undefined;
     for (const model of spec.models) {
       entries.push({
         id: `${spec.label}:${model}`,
         providerLabel: spec.label,
         model,
         provider,
+        keyEnv: spec.keyEnv,
         label: `${spec.label} · ${model}`,
+        available: Boolean(key),
       });
     }
   }
-  if (entries.length === 0) {
+  if (!entries.some((e) => e.available)) {
     throw new Error(
       "No provider API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or " +
-        "OPENROUTER_API_KEY in axle-code/.env or ../axle/.env.",
+        "OPENROUTER_API_KEY in axle-code/.env or ~/.axle/credentials.",
     );
   }
   return entries;
 }
 
-/** Pick a sensible default: an Anthropic model if available, else the first entry. */
-export function defaultEntry(catalog: ModelEntry[]): ModelEntry {
+/**
+ * Pick the starting model, in precedence order:
+ *   1. AXLE_CODE_MODEL env var  — one-off override
+ *   2. savedModelId             — the last model persisted to ~/.axle/config.json
+ *   3. an Anthropic model, else the first available entry
+ */
+export function defaultEntry(catalog: ModelEntry[], savedModelId?: string): ModelEntry {
+  const available = catalog.filter((e) => e.available);
   const preferred = process.env.AXLE_CODE_MODEL;
   if (preferred) {
-    const match = catalog.find((e) => e.model === preferred || e.id.endsWith(preferred));
+    const match = available.find((e) => e.model === preferred || e.id.endsWith(preferred));
     if (match) return match;
   }
-  return catalog.find((e) => e.providerLabel === "anthropic") ?? catalog[0];
+  if (savedModelId) {
+    const match = available.find((e) => e.id === savedModelId);
+    if (match) return match;
+  }
+  return available.find((e) => e.providerLabel === "anthropic") ?? available[0];
 }
 
 /** Find an entry by case-insensitive substring against its id/model/label. */

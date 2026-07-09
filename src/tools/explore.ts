@@ -28,6 +28,7 @@ export const exploreTool = createAgentTool({
   prompt: (input) => input.task,
   createAgent: () => {
     const entry = childEntry();
+    if (!entry.provider) throw new Error(`${entry.label} is unavailable — set ${entry.keyEnv}.`);
     return new Agent({
       provider: entry.provider,
       model: entry.model,

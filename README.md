@@ -12,14 +12,47 @@ pnpm install          # links ../axle/packages/axle
 pnpm dev              # launch the TUI
 ```
 
-Provider keys are read from `axle-code/.env` if present, otherwise from
-`../axle/.env`. Any of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
-or `OPENROUTER_API_KEY` enables the matching models.
+## Install it globally (run from anywhere)
+
+The `bin/` launcher runs the TUI (via the bundled `tsx`, no build step) against
+whatever directory you invoke it from. Link it with pnpm:
+
+```bash
+pnpm setup            # one-time: creates pnpm's global bin dir + adds it to PATH
+                      # (edits your shell profile; open a new shell afterward)
+pnpm link --global    # registers `axle-code` from this working tree
+```
+
+Then `axle-code` from any project. Because it links the working tree, edits to
+`src/` take effect on the next launch — no rebuild. Undo with
+`pnpm uninstall --global axle-code`.
+
+## Configuration (`~/.axle/`)
+
+For use outside this repo, put a global credentials + config there:
+
+- **`~/.axle/credentials`** — provider keys in `.env` syntax:
+  ```
+  ANTHROPIC_API_KEY=...
+  OPENAI_API_KEY=...
+  GEMINI_API_KEY=...
+  OPENROUTER_API_KEY=...
+  ```
+  Any one of these enables the matching models.
+- **`~/.axle/config.json`** — preferences; currently `{ "defaultModel": "…" }`.
+  The TUI writes this whenever you switch models, so the next launch resumes on
+  your last model.
+
+Key precedence (first found wins): a local `axle-code/.env`, then
+`~/.axle/credentials`. Start model precedence: `AXLE_CODE_MODEL` env → saved
+`defaultModel` → an Anthropic model.
 
 ## Using the TUI
 
 Type a request at the `❯` prompt. The agent can read, write, and edit files,
-run shell commands, and search the working directory.
+run shell commands, and search the working directory. Typing `/` lists the
+slash commands below the prompt; press **Tab** to complete (fully when one
+matches, else to the shared prefix).
 
 | Command | Action |
 |---------|--------|
@@ -67,7 +100,8 @@ Key files:
 
 | File | Role |
 |------|------|
-| `src/env.ts`, `src/models.ts` | key detection + the model catalog |
+| `src/env.ts`, `src/config.ts`, `src/models.ts` | key/credentials loading, `~/.axle/` prefs, the model catalog |
+| `bin/axle-code.mjs` | global launcher (runs the TUI against the current dir) |
 | `src/agent.ts` | agent factory (system prompt, tools, compaction callback) |
 | `src/compaction.ts` | `onCompaction` policy (summarize → one message) |
 | `src/session.ts` | `/save` + `/load` via `agent.snapshot()` |

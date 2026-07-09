@@ -26,14 +26,14 @@ export function makeAgentFactory(options: AgentFactoryOptions = {}) {
   const tools = options.tools ?? [];
   const system = options.system ?? SYSTEM_PROMPT;
   return (entry: ModelEntry, session?: AgentSession): Agent => {
-    const agent = new Agent(
-      { provider: entry.provider, model: entry.model, system, tools },
-      session,
-    );
+    if (!entry.provider) {
+      throw new Error(`${entry.label} is unavailable — set ${entry.keyEnv}.`);
+    }
+    const provider = entry.provider;
+    const agent = new Agent({ provider, model: entry.model, system, tools }, session);
     agent.onCompaction(
       createCompactionCallback(
-        () =>
-          new Agent({ provider: entry.provider, model: entry.model, system: SUMMARIZER_SYSTEM }),
+        () => new Agent({ provider, model: entry.model, system: SUMMARIZER_SYSTEM }),
       ),
     );
     return agent;

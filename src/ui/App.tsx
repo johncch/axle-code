@@ -6,6 +6,7 @@ import type { Agent, ContextUsage } from "@fifthrevision/axle";
 import { writeConfig } from "../config.js";
 import { findEntry, type ModelEntry } from "../models.js";
 import { listSessions, loadSession, saveSession } from "../session.js";
+import { formatVersion } from "../version.js";
 import { AnnotationBar } from "./AnnotationBar.js";
 import { StatusBar } from "./StatusBar.js";
 import { TurnView } from "./TurnView.js";
@@ -24,6 +25,7 @@ const COMMANDS: { name: string; desc: string }[] = [
   { name: "/load", desc: "restore a saved session [name]" },
   { name: "/sessions", desc: "list saved sessions" },
   { name: "/index", desc: "demo a host annotation lifecycle" },
+  { name: "/version", desc: "show build sha + date" },
   { name: "/exit", desc: "quit" },
   { name: "/quit", desc: "quit" },
 ];
@@ -251,6 +253,10 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
       void doListSessions();
       return;
     }
+    if (trimmed === "/version") {
+      setNotice(formatVersion());
+      return;
+    }
     if (trimmed === "/index") {
       // Demonstrate an annotation lifecycle: running → complete.
       const id = `index-${Date.now()}`;
@@ -269,7 +275,7 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
       return;
     }
     if (trimmed.startsWith("/")) {
-      setNotice(`Unknown command: ${trimmed.split(/\s/)[0]} · try /model /compact /save /load /index /exit`);
+      setNotice(`Unknown command: ${trimmed.split(/\s/)[0]} · try /model /compact /save /load /version /exit`);
       return;
     }
     setNotice(null);
@@ -375,7 +381,7 @@ export function App({ catalog, initialEntry, createAgent }: AppProps) {
         entry={entry}
         context={context}
         sessionUsage={sessionUsage}
-        hint="/model · /compact · /save · /load · /index · /exit"
+        hint="/model · /compact · /save · /load · /version · /exit"
       />
     </Box>
   );

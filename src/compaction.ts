@@ -27,6 +27,13 @@ function messageText(message: AxleMessage): string {
 export function createCompactionCallback(
   makeSummarizer: () => Agent,
   minMessages = 6,
+  /**
+   * Optional accessor for a host-supplied focus prompt. When non-empty, its
+   * text is handed to the summarizer so the user can steer what the compacted
+   * briefing emphasizes. Read at compaction time so it always reflects the
+   * latest value (e.g. set just before `agent.compact()`).
+   */
+  getPrompt?: () => string | undefined,
 ): CompactionCallback {
   return async (state, ctx) => {
     if (state.messages.length < minMessages) return null;
@@ -36,13 +43,17 @@ export function createCompactionCallback(
       .filter((line) => line.trim().length > 0)
       .join("\n");
 
+    const focus = getPrompt?.()?.trim();
+    const instruction =
+      "Compress this coding-assistant transcript into a concise briefing that preserves " +
+      "decisions made, files created/changed, key tool results, and any open tasks. " +
+      "Use short bullet points." +
+      (focus ? `\n\nThe user wants the summary to focus on: ${focus}` : "");
+
     let summary = "";
     try {
       const res = await makeSummarizer().send(
-        "Compress this coding-assistant transcript into a concise briefing that preserves " +
-          "decisions made, files created/changed, key tool results, and any open tasks. " +
-          "Use short bullet points.\n\n" +
-          transcript,
+        `${instruction}\n\n${transcript}`,
         { signal: ctx.signal },
       ).final;
       if (res.ok) summary = res.response;

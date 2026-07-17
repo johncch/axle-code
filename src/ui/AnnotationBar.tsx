@@ -10,7 +10,7 @@ const STATUS_COLOR: Record<string, string> = {
   error: "red",
 };
 
-export function AnnotationBar({ annotations }: { annotations: Annotation[] }) {
+export const AnnotationBar = React.memo(function AnnotationBar({ annotations }: { annotations: Annotation[] }) {
   if (annotations.length === 0) return null;
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -25,9 +25,9 @@ export function AnnotationBar({ annotations }: { annotations: Annotation[] }) {
               <Text color={a.status ? STATUS_COLOR[a.status] ?? "gray" : "gray"}>◆</Text>
             )}
           </Box>
-          <Text color="gray">{a.label}</Text>
+          <Text>{a.label}</Text>
         </Box>
       ))}
     </Box>
   );
-}
+});

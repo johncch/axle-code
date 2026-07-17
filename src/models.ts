@@ -54,6 +54,7 @@ const PROVIDERS: ProviderSpec[] = [
       "deepseek/deepseek-v4-pro",
       "qwen/qwen3.7-max",
       "minimax/minimax-m3",
+      "moonshotai/kimi-k3",
     ],
   },
 ];

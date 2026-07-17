@@ -58,7 +58,7 @@ matches, else to the shared prefix).
 |---------|--------|
 | `/model` | open an arrow-key model picker |
 | `/model <substr>` | switch model directly (e.g. `/model glm`, `/model sonnet`) |
-| `/compact` | summarize + shrink the conversation (compaction) |
+| `/compact [focus]` | summarize + shrink the conversation (optional focus prompt steers the summary) |
 | `/save [name]` | save the session to `.axle-code-sessions/` |
 | `/load [name]` | restore a saved session (model + scrollback + history) |
 | `/sessions` | list saved sessions |

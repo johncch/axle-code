@@ -54,3 +54,23 @@ export function clampLines(text: string, maxLines: number): string {
   const shown = lines.slice(0, maxLines).join("\n");
   return `${shown}\n… (${lines.length - maxLines} more lines)`;
 }
+
+/**
+ * Show the *tail* of a growing string (the most recent lines), with a leading
+ * indicator when content was elided.
+ *
+ * This is the counterpart to `clampLines` for **streaming** content: rather
+ * than keeping the head and hiding the rest (which would freeze the visible
+ * text at the start), it keeps the tail — the part still being written — so the
+ * user sees live output. Used for the active streaming turn's text part so the
+ * live region (everything below `<Static>`) never grows taller than the
+ * terminal viewport. Ink falls back to `clearTerminal` (a full screen +
+ * scrollback wipe + rewrite) when the live region exceeds the viewport, which
+ * is the source of the flashing/jitter on long turns.
+ */
+export function tailLines(text: string, maxLines: number): string {
+  const lines = text.split("\n");
+  if (lines.length <= maxLines) return text;
+  const shown = lines.slice(lines.length - maxLines).join("\n");
+  return `… (${lines.length - maxLines} earlier lines)\n${shown}`;
+}

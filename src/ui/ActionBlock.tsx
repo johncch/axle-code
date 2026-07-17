@@ -9,6 +9,7 @@ import {
   clampLines,
   oneLineParams,
   resultToText,
+  tailLines,
 } from "./render.js";
 
 const MAX_RESULT_LINES = 12;
@@ -29,7 +30,7 @@ function actionLabel(part: ActionPart): { name: string; detailText: string } {
   }
 }
 
-export function ActionBlock({ part }: { part: ActionPart }) {
+export const ActionBlock = React.memo(function ActionBlock({ part }: { part: ActionPart }) {
   const status = part.status;
   const { name, detailText } = actionLabel(part);
   const { text, tone } = resultToText(part.detail.result);
@@ -50,7 +51,7 @@ export function ActionBlock({ part }: { part: ActionPart }) {
         <Text bold color="magenta">
           {name}
         </Text>
-        {detailText ? <Text color="gray"> {detailText}</Text> : null}
+        {detailText ? <Text> {detailText}</Text> : null}
       </Box>
 
       {children && children.length > 0 ? (
@@ -69,9 +70,16 @@ export function ActionBlock({ part }: { part: ActionPart }) {
 
       {text ? (
         <Box marginLeft={2} borderStyle="round" borderColor="gray" paddingLeft={1} paddingRight={1}>
-          <Text color={tone === "error" ? "red" : "gray"}>{clampLines(text, MAX_RESULT_LINES)}</Text>
+          {/* In-progress (streaming) results use a tail window so the live
+              region stays within the viewport; completed results are already
+              final and can be head-clamped. */}
+          <Text color={tone === "error" ? "red" : undefined}>
+            {status === "running"
+              ? tailLines(text, MAX_RESULT_LINES)
+              : clampLines(text, MAX_RESULT_LINES)}
+          </Text>
         </Box>
       ) : null}
     </Box>
   );
-}
+});

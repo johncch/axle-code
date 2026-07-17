@@ -11,7 +11,7 @@ export interface StatusBarProps {
   hint: string;
 }
 
-export function StatusBar({ entry, context, sessionUsage, hint }: StatusBarProps) {
+export const StatusBar = React.memo(function StatusBar({ entry, context, sessionUsage, hint }: StatusBarProps) {
   const ctxText = context
     ? context.limit
       ? `ctx ${formatTokens(context.total)}/${formatTokens(context.limit)} (${Math.round(
@@ -22,22 +22,22 @@ export function StatusBar({ entry, context, sessionUsage, hint }: StatusBarProps
 
   return (
     <Box marginTop={1} flexWrap="wrap">
-      <Text color="gray" dimColor>
+      <Text dimColor>
         {entry.providerLabel} · {entry.model}
       </Text>
       {ctxText ? (
-        <Text color="gray" dimColor>
+        <Text dimColor>
           {"   "}
           {ctxText}
         </Text>
       ) : null}
-      <Text color="gray" dimColor>
+      <Text dimColor>
         {"   "}session ↑{formatTokens(sessionUsage.in)} ↓{formatTokens(sessionUsage.out)}
       </Text>
-      <Text color="gray" dimColor>
+      <Text dimColor>
         {"   "}
         {hint}
       </Text>
     </Box>
   );
-}
+});

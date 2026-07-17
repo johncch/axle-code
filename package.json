@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "A proof-of-concept TUI coding agent built on Axle, used to stress-test Axle's UI contract.",
+  "packageManager": "pnpm@11.10.0",
   "bin": {
     "axle-code": "bin/axle-code.mjs"
   },

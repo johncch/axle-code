@@ -12,6 +12,7 @@ import { formatVersion } from "../version.js";
 import { AnnotationBar } from "./AnnotationBar.js";
 import { GenerationTimer } from "./GenerationTimer.js";
 import { StatusBar } from "./StatusBar.js";
+import { TopBar } from "./TopBar.js";
 import { TurnView } from "./TurnView.js";
 import { useAgent } from "./useAgent.js";
 
@@ -557,6 +558,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
   //   appending below, out of view, until PgDn/Esc resumes following.
   return (
     <Box flexDirection="column" height={rows}>
+      <TopBar />
       <Box
         ref={viewportRef}
         flexGrow={1}

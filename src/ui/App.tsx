@@ -1,6 +1,6 @@
 import { Box, Text, measureElement, useApp, useInput, useWindowSize, type DOMElement } from "ink";
 import SelectInput from "ink-select-input";
-import TextInput from "ink-text-input";
+import TextInput from "./TextInput.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, ContextUsage } from "@fifthrevision/axle";
 import type { Turn } from "@fifthrevision/axle/ui";

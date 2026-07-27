@@ -130,12 +130,10 @@ Key files:
 ```bash
 pnpm dev          # interactive TUI (needs a real TTY)
 pnpm headless "…" # drive one turn, log the event stream + accumulated turns
-pnpm smoke "…"    # render <App> via ink-testing-library, print the final frame
-                  #   SMOKE_MODEL=glm pnpm smoke "…"  picks a model by substring
+pnpm test         # unit tests (vitest, in test/)
 pnpm typecheck    # tsc --noEmit
-tsx switch-test.ts # verify session continuity across a model switch
 ```
 
-`pnpm smoke` drives the agent directly (ink-testing-library's mock stdin has no
-raw mode, so `TextInput` can't be typed into) — use it to inspect rendered
-output non-interactively.
+Tests drive ink-testing-library's mock stdin, which proves the component reacts
+to a given key encoding but not that your terminal emits it — check keybindings
+in a real TTY with `pnpm dev`.

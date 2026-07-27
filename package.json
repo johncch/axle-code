@@ -11,7 +11,7 @@
   "scripts": {
     "headless": "tsx src/headless.ts",
     "dev": "tsx src/index.tsx",
-    "smoke": "tsx smoke.tsx",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,7 +20,6 @@
     "ink": "^7.1.0",
     "ink-select-input": "^6.2.0",
     "ink-spinner": "^5.0.0",
-    "ink-text-input": "^6.0.0",
     "react": "^19.2.7",
     "zod": "^4.4.3"
   },
@@ -29,6 +28,7 @@
     "@types/react": "^19.2.17",
     "ink-testing-library": "^4.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }

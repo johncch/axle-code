@@ -6,7 +6,6 @@ import type { Agent, ContextUsage } from "@fifthrevision/axle";
 import type { Turn } from "@fifthrevision/axle/ui";
 import { writeConfig } from "../config.js";
 import { findEntry, type ModelEntry } from "../models.js";
-import { getCompactionFocus } from "../agent.js";
 import { AUTOSAVE_NAME, listSessions, loadSession, rotateCurrentSession, saveSession } from "../session.js";
 import { formatVersion } from "../version.js";
 import { AnnotationBar } from "./AnnotationBar.js";
@@ -26,7 +25,7 @@ export interface AppProps {
 
 const COMMANDS: { name: string; desc: string }[] = [
   { name: "/model", desc: "switch model (picker, or /model <substr>)" },
-  { name: "/compact", desc: "summarize + shrink [optional focus prompt]" },
+  { name: "/compact", desc: "summarize + shrink the conversation" },
   { name: "/save", desc: "save the session [name]" },
   { name: "/load", desc: "restore a saved session [name]" },
   { name: "/sessions", desc: "list saved sessions" },
@@ -451,30 +450,17 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
       return;
     }
     if (trimmed === "/compact" || trimmed.startsWith("/compact")) {
-      const focusPrompt = trimmed.slice("/compact".length).trim();
       setNotice(null);
       setCompacting(true);
-      if (focusPrompt) {
-        try {
-          getCompactionFocus(agent).prompt = focusPrompt;
-        } catch {
-          // Older agent without a focus holder — proceed without a prompt.
-        }
-      }
       agent
         .compact()
         .then((record) =>
-          setNotice(record ? `Context compacted${focusPrompt ? ` (focus: ${focusPrompt})` : ""}.` : "Nothing to compact yet."),
+          setNotice(record ? "Context compacted." : "Nothing to compact yet."),
         )
         .catch((error) =>
           setNotice(`Compact failed: ${error instanceof Error ? error.message : String(error)}`),
         )
         .finally(() => {
-          try {
-            getCompactionFocus(agent).prompt = undefined;
-          } catch {
-            // ignore
-          }
           setCompacting(false);
         });
       return;

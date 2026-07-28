@@ -58,7 +58,7 @@ matches, else to the shared prefix).
 |---------|--------|
 | `/model` | open an arrow-key model picker |
 | `/model <substr>` | switch model directly (e.g. `/model glm`, `/model sonnet`) |
-| `/compact [focus]` | summarize + shrink the conversation (optional focus prompt steers the summary) |
+| `/compact` | summarize + shrink the conversation (also runs automatically before each turn when context is high) |
 | `/save [name]` | save the session to `.axle-code-sessions/` |
 | `/load [name]` | restore a saved session (model + scrollback + history) |
 | `/sessions` | list saved sessions |
@@ -102,8 +102,7 @@ Key files:
 |------|------|
 | `src/env.ts`, `src/config.ts`, `src/models.ts` | key/credentials loading, `~/.axle/` prefs, the model catalog |
 | `bin/axle-code.mjs` | global launcher (runs the TUI against the current dir) |
-| `src/agent.ts` | agent factory (system prompt, tools, compaction callback) |
-| `src/compaction.ts` | `onCompaction` policy (summarize → one message) |
+| `src/agent.ts` | agent factory (system prompt, tools, `PromptCompactor` auto-compaction) |
 | `src/session.ts` | `/save` + `/load` via `agent.snapshot()` |
 | `src/tools/*` | coding tools (`read`, `write`, `edit`, `ls`, `glob`, `grep`, `bash`, `explore`) |
 | `src/ui/useAgent.ts` | event stream → `TurnAccumulator` → React; `send`/`cancel`/`reset` |

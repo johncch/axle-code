@@ -2,3 +2,5 @@ allowBuilds:
   '@google/genai': true
   esbuild: true
   protobufjs: true
+minimumReleaseAgeExclude:
+  - '@fifthrevision/axle@0.28.0'

@@ -2,12 +2,13 @@ import { Box, Text } from "ink";
 import React from "react";
 import type { Turn, TurnPart } from "@fifthrevision/axle/ui";
 import { ActionBlock } from "./ActionBlock.js";
+import { Markdown } from "./Markdown.js";
 import { clampLines } from "./render.js";
 
 export const PartView = React.memo(function PartView({ part }: { part: TurnPart }) {
   switch (part.type) {
     case "text":
-      return <Text>{part.text}</Text>;
+      return <Markdown>{part.text}</Markdown>;
     case "thinking":
       if (part.redacted) return <Text>💭 [thinking redacted]</Text>;
       return part.text ? (

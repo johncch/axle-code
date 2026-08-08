@@ -1,5 +1,5 @@
 import { Agent, PromptCompactor } from "@fifthrevision/axle";
-import type { AgentSession, ExecutableTool } from "@fifthrevision/axle";
+import type { AgentSession, ExecutableTool, ProviderTool } from "@fifthrevision/axle";
 import { buildCatalog, defaultEntry, type ModelEntry } from "./models.js";
 
 const SYSTEM_PROMPT = `You are axle-code, a terminal coding assistant.
@@ -7,7 +7,11 @@ const SYSTEM_PROMPT = `You are axle-code, a terminal coding assistant.
 You help the user read, write, and modify code in their working directory. When
 a task requires inspecting or changing files, use the provided tools rather than
 guessing. Prefer small, verifiable steps. Keep prose concise; let tool results
-speak for themselves.`;
+speak for themselves.
+
+When a question involves information beyond the local codebase — recent library
+versions, API docs, current behavior of a dependency, or anything time-sensitive
+— use web search to ground your answer in current sources.`;
 
 /**
  * Instruction handed to the summarizer that produces each compaction briefing.
@@ -28,6 +32,9 @@ const COMPACTION_PROMPT =
  */
 const COMPACTION_THRESHOLD_TOKENS = 100_000;
 const COMPACTION_TARGET_TOKENS = 30_000;
+/** Provider-managed web search, exposed on every agent by default. */
+const WEB_SEARCH_PROVIDER_TOOL: ProviderTool = { type: "provider", name: "web_search" };
+
 /** Recent user messages kept verbatim after a compaction, for continuity. */
 const COMPACTION_RECENT_USER_MESSAGES = 10;
 
@@ -61,7 +68,16 @@ export function makeAgentFactory(options: AgentFactoryOptions = {}) {
       targetTokens: COMPACTION_TARGET_TOKENS,
       recentUserMessages: COMPACTION_RECENT_USER_MESSAGES,
     });
-    const agent = new Agent({ provider, model: entry.model, system, tools }, session);
+    const agent = new Agent(
+      {
+        provider,
+        model: entry.model,
+        system,
+        tools,
+        providerTools: [WEB_SEARCH_PROVIDER_TOOL],
+      },
+      session,
+    );
     agent.setCompaction({ compact: compactor.compact, triggers: { beforeTurn: true } });
     return agent;
   };

@@ -16,10 +16,12 @@
   },
   "dependencies": {
     "@fifthrevision/axle": "^0.29.0",
+    "chalk": "^6.0.0",
     "dotenv": "^17.0.0",
     "ink": "^7.1.1",
     "ink-select-input": "^6.2.0",
     "ink-spinner": "^5.0.0",
+    "markdansi": "^0.3.3",
     "react": "^19.2.8",
     "zod": "^4.4.3"
   },

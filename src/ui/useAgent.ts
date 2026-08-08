@@ -13,6 +13,8 @@ export interface UseAgentResult {
   status: AgentStatus;
   lastError: string | null;
   send: (message: string) => void;
+  /** Ask the active turn to finish at its next tool-call boundary. */
+  stop: () => void;
   cancel: () => void;
   clearError: () => void;
   /** Replace the accumulator's state, e.g. after loading a saved session. */
@@ -127,14 +129,31 @@ export function useAgent(
     [flushSync],
   );
 
-  const send = useCallback(
-    (message: string) => {
-      const trimmed = message.trim();
-      if (!trimmed) return;
-      setLastError(null);
-      setStatus("streaming");
-      const handle = agent.send(trimmed);
-      handleRef.current = handle;
+  // Sends are queued FIFO by the agent's scheduler, so a user can interject a
+  // steering message while a turn is running. We therefore track every
+  // in-flight handle in a queue: the front is the one currently executing (and
+  // the one `cancel` acts on), and status stays "streaming" until the last
+  // queued turn settles.
+  const handlesRef = useRef<AgentHandle[]>([]);
+
+  const popSettled = useCallback(() => {
+    const handles = handlesRef.current;
+    if (handles.length === 0) return;
+    // The settled handle is always the front of the FIFO queue.
+    handles.shift();
+    if (handles.length === 0) {
+      handleRef.current = null;
+      setStatus("idle");
+      // The turn:end event flushes the final turn state, but make sure no
+      // throttled delta is left pending when we go idle.
+      flushSync();
+    } else {
+      handleRef.current = handles[0] ?? null;
+    }
+  }, [flushSync]);
+
+  const settle = useCallback(
+    (handle: AgentHandle) => {
       handle.final
         .then((result) => {
           // Non-fatal failures (model/tool/parse) resolve with ok:false; the
@@ -146,17 +165,34 @@ export function useAgent(
           if (error instanceof AxleAgentAbortError) return;
           setLastError(error instanceof Error ? error.message : String(error));
         })
-        .finally(() => {
-          handleRef.current = null;
-          setStatus("idle");
-          // The turn:end event flushes the final turn state, but make sure no
-          // throttled delta is left pending when we go idle.
-          flushSync();
-        });
+        .finally(popSettled);
     },
-    [agent, flushSync],
+    [popSettled],
   );
 
+  const send = useCallback(
+    (message: string) => {
+      const trimmed = message.trim();
+      if (!trimmed) return;
+      setLastError(null);
+      setStatus("streaming");
+      const handle = agent.send(trimmed);
+      handlesRef.current.push(handle);
+      if (!handleRef.current) handleRef.current = handle;
+      settle(handle);
+    },
+    [agent, settle],
+  );
+
+  // Ask the active turn to finish at its next tool-batch boundary. Queued
+  // sends (e.g. an earlier steering message) are unaffected — they run against
+  // the committed history once the active turn settles.
+  const stop = useCallback(() => {
+    agent.stop();
+  }, [agent]);
+
+  // Cancel the currently active turn (the front of the queue). Queued steering
+  // messages are left to run once it settles.
   const cancel = useCallback(() => {
     handleRef.current?.cancel("user cancelled");
   }, []);
@@ -177,6 +213,7 @@ export function useAgent(
     status,
     lastError,
     send,
+    stop,
     cancel,
     clearError,
     reset,

@@ -62,7 +62,7 @@ function roughLines(turns: Turn[] | undefined): number {
 export function App({ catalog, initialEntry, createAgent, initialSession }: AppProps) {
   const [agent, setAgent] = useState<Agent>(() => createAgent(initialEntry, initialSession));
   const [entry, setEntry] = useState<ModelEntry>(initialEntry);
-  const { turns, sessionAnnotations, status, lastError, send, cancel, reset, applyEvent } =
+  const { turns, sessionAnnotations, status, lastError, send, stop, cancel, reset, applyEvent } =
     useAgent(agent, initialSession);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<"input" | "picker" | "sessions">("input");
@@ -434,7 +434,12 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
   }
 
   const onSubmit = (value: string) => {
-    if (status === "streaming" || switching || compacting) return;
+    // User can keep typing and send steering messages while the agent is
+    // working. Slash-commands that need a settled conversation are blocked
+    // while a turn is active; a plain message stops the active turn at its
+    // next tool-call boundary and queues itself as the next turn.
+    const streaming = status === "streaming";
+    if (switching || compacting) return;
     const trimmed = value.trim();
     setInput("");
     // Sending always returns the view to the bottom.
@@ -442,6 +447,45 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
 
     if (trimmed === "/exit" || trimmed === "/quit") {
       void quit();
+      return;
+    }
+    // While a turn is running, commands that mutate or inspect a *settled*
+    // conversation are unsafe (they'd snapshot/queue mid-stream). Allow the
+    // always-safe ones; block the rest and steer the user to a plain message
+    // or to stop first.
+    if (streaming) {
+      if (!trimmed.startsWith("/")) {
+        // Steering message: stop the active turn at its next tool-call
+        // boundary, then queue this message as the next turn.
+        stop();
+        setNotice("Pausing at next tool call — sending your message…");
+        send(trimmed);
+        return;
+      }
+      if (trimmed === "/version") {
+        setNotice(formatVersion());
+        return;
+      }
+      if (trimmed === "/index") {
+        // Safe anywhere: purely visual demo annotation.
+        const id = `index-${Date.now()}`;
+        applyEvent({
+          type: "annotation:start",
+          target: { type: "session" },
+          annotation: { id, kind: "index", label: "Indexing workspace…", status: "running" },
+        });
+        setTimeout(() => {
+          applyEvent({
+            type: "annotation:end",
+            target: { type: "session" },
+            annotation: { id, kind: "index", label: "Workspace indexed ✓", status: "complete" },
+          });
+        }, 1500);
+        return;
+      }
+      setNotice(
+        `Wait for the agent to finish, or send a plain message to pause and queue it. (${trimmed.split(/\s/)[0]} needs an idle conversation)`,
+      );
       return;
     }
     if (trimmed === "/model") {
@@ -628,39 +672,40 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
           {busy ? (
             <Text color="cyan">
               {switching
-                ? "…switching model"
+                ? "…switching model (input disabled)"
                 : compacting
-                  ? "…compacting context"
+                  ? "…compacting context (input disabled)"
                   : cancelling
                     ? "…cancelling"
-                    : "…working (Esc to cancel)"}
+                    : "working — type below to pause & steer, Esc to cancel"}
             </Text>
-          ) : (
-            <>
-              <Box>
-                <Text color="blue">❯ </Text>
-                <TextInput
-                  value={input}
-                  onChange={setInput}
-                  onSubmit={onSubmit}
-                  placeholder="Ask me… (/model to switch, /exit to quit)"
-                />
-              </Box>
-              {suggestions.length > 0 ? (
-                <Box flexDirection="column" marginLeft={2}>
-                  {suggestions.map((s) => (
-                    <Box key={s.name}>
-                      <Text color="cyan">{s.name}</Text>
-                      {s.desc ? <Text>  {s.desc}</Text> : null}
-                    </Box>
-                  ))}
-                  <Text>
-                    Tab to complete
-                  </Text>
+          ) : null}
+          <Box>
+            <Text color="blue">❯ </Text>
+            <TextInput
+              value={input}
+              onChange={setInput}
+              onSubmit={onSubmit}
+              placeholder={
+                busy
+                  ? "Steer the agent… (sends a message, pauses at next tool call)"
+                  : "Ask me… (/model to switch, /exit to quit)"
+              }
+            />
+          </Box>
+          {suggestions.length > 0 ? (
+            <Box flexDirection="column" marginLeft={2}>
+              {suggestions.map((s) => (
+                <Box key={s.name}>
+                  <Text color="cyan">{s.name}</Text>
+                  {s.desc ? <Text>  {s.desc}</Text> : null}
                 </Box>
-              ) : null}
-            </>
-          )}
+              ))}
+              <Text>
+                Tab to complete
+              </Text>
+            </Box>
+          ) : null}
         </Box>
       ) : null}
 

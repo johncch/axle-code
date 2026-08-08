@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@fifthrevision/axle':
-        specifier: ^0.28.0
-        version: 0.28.0(ws@8.21.0)
+        specifier: ^0.29.0
+        version: 0.29.0(ws@8.21.0)
       dotenv:
         specifier: ^17.0.0
         version: 17.4.2
@@ -233,8 +233,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@fifthrevision/axle@0.28.0':
-    resolution: {integrity: sha512-g72q8Qfe9/nYepUm8D6KWf6mx/H+3WPpvzzt07wDmGQl61BPAFvjIo2947hyMuZFN35kzIIiLL3dk47Tz+RMBg==}
+  '@fifthrevision/axle@0.29.0':
+    resolution: {integrity: sha512-VpgNMSPyCntoJRkd7yhSQ7ZXFPCrfxluZkVqNrihyXlrcWcp7run8Ya0aUEwj1nZGD4sZ0bBld7O+bCdXZuRYw==}
 
   '@google/genai@2.11.0':
     resolution: {integrity: sha512-d2Csf29vS0GfHc52H0MG25ccY4FKvvbDgqDlEovLrPLF8sPegWr/GGO+LMOy85/1SnX0iV0zDAW7R8SsvWg8Vg==}
@@ -1572,7 +1572,7 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@fifthrevision/axle@0.28.0(ws@8.21.0)':
+  '@fifthrevision/axle@0.29.0(ws@8.21.0)':
     dependencies:
       '@anthropic-ai/sdk': 0.98.1(zod@4.4.3)
       '@google/genai': 2.11.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))

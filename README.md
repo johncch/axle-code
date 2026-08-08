@@ -39,6 +39,10 @@ For use outside this repo, put a global credentials + config there:
   OPENROUTER_API_KEY=...
   ```
   Any one of these enables the matching models.
+- **`~/.axle/models.json`** or **`.axle/models.json`** — optional JSON array of
+  model spec strings to override the built-in model list. The local
+  `.axle/models.json` (relative to CWD) takes precedence over the global
+  `~/.axle/models.json`. See [Models](#models) below.
 - **`~/.axle/config.json`** — preferences; currently `{ "defaultModel": "…" }`.
   The TUI writes this whenever you switch models, so the next launch resumes on
   your last model.
@@ -74,16 +78,40 @@ schemas and turn-level error surfacing).
 
 ## Models
 
-The catalog is defined in one place — the `PROVIDERS` array in
-[`src/models.ts`](./src/models.ts) — and only includes providers whose key is
-set:
+The model catalog is a flat list of spec strings. By default a built-in list
+is used; you can override it by creating a `models.json` file in either:
 
-- **anthropic** · `claude-sonnet-5`
-- **openai** · `gpt-5.4`
-- **gemini** · `gemini-3.5-flash`
-- **openrouter** (via `chatCompletions`) · `z-ai/glm-5.2`,
-  `deepseek/deepseek-v4-pro`, `qwen/qwen3.7-max`, `minimax/minimax-m3`
+- **`.axle/models.json`** — project-local (relative to where you run `axle-code`)
+- **`~/.axle/models.json`** — global
 
+The local file takes precedence if both exist.
+
+```json
+[
+  "anthropic/claude-sonnet-5",
+  "openai/gpt-5.4",
+  "gemini/gemini-3.5-flash",
+  "z-ai/glm-5.2",
+  "deepseek/deepseek-v4-pro"
+]
+```
+
+Each entry is either `"<provider>/<model-name>"` or just `"<model-name>"`:
+
+- If the prefix is `anthropic`, `openai`, or `gemini`, it's treated as the
+  provider and the rest as the model name.
+- **Anything else** falls back to **openrouter** and the full string is sent
+  as the model name (e.g. `z-ai/glm-5.2`, `deepseek/deepseek-v4-pro`, or even
+  a bare `some-model` with no slash).
+
+The provider determines which API key is used:
+
+- `anthropic`  → `ANTHROPIC_API_KEY`
+- `openai`     → `OPENAI_API_KEY`
+- `gemini`     → `GEMINI_API_KEY`
+- openrouter   → `OPENROUTER_API_KEY`
+
+Models whose provider key is missing are shown grayed out in the picker.
 Override the default with `AXLE_CODE_MODEL=<substr>`.
 
 ## How it consumes Axle

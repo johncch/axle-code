@@ -30,7 +30,7 @@ render(
     initialEntry={startEntry}
     createAgent={createAgent}
     initialSession={resume?.session}
+    initialTurns={resume?.turns}
   />,
   { exitOnCtrlC: false, alternateScreen: true },
 );
-

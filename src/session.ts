@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { AgentSession } from "@fifthrevision/axle";
+import type { AgentSession, Turn } from "@fifthrevision/axle";
 
 const SESSIONS_DIR = resolve(process.cwd(), ".axle-code-sessions");
 
@@ -8,10 +8,13 @@ const SESSIONS_DIR = resolve(process.cwd(), ".axle-code-sessions");
 export const AUTOSAVE_NAME = "__current__";
 
 export interface SavedSessionFile {
-  version: 1;
+  version: 2;
   modelId: string;
   savedAt: string;
+  /** Agent continuation state (sessionId + active messages). */
   session: AgentSession;
+  /** Host-owned transcript turns, persisted separately from the AgentSession. */
+  turns: Turn[];
 }
 
 function sanitize(name: string): string {
@@ -31,13 +34,15 @@ export async function saveSession(
   name: string,
   modelId: string,
   session: AgentSession,
+  turns: Turn[],
 ): Promise<string> {
   await mkdir(SESSIONS_DIR, { recursive: true });
   const payload: SavedSessionFile = {
-    version: 1,
+    version: 2,
     modelId,
     savedAt: new Date().toISOString(),
     session,
+    turns,
   };
   const path = resolve(SESSIONS_DIR, `${sanitize(name)}.json`);
   await writeFileAtomic(path, JSON.stringify(payload, null, 2));
@@ -47,11 +52,38 @@ export async function saveSession(
 export async function loadSession(name: string): Promise<SavedSessionFile> {
   const path = resolve(SESSIONS_DIR, `${sanitize(name)}.json`);
   const raw = await readFile(path, "utf-8");
-  const parsed = JSON.parse(raw) as SavedSessionFile;
-  if (parsed.version !== 1) {
-    throw new Error(`Unsupported session file version: ${parsed.version}`);
+  const parsed = JSON.parse(raw) as {
+    version: number;
+    modelId: string;
+    savedAt: string;
+    session: AgentSession & { turns?: Turn[] };
+    turns?: Turn[];
+  };
+  // Migrate v1 (pre-0.30) session files: turns were nested inside
+  // session.turns; in v2 they're a top-level field and session is just
+  // { sessionId, messages }.
+  if (parsed.version === 1) {
+    return {
+      version: 2,
+      modelId: parsed.modelId,
+      savedAt: parsed.savedAt,
+      session: {
+        sessionId: parsed.session.sessionId,
+        messages: parsed.session.messages,
+      },
+      turns: parsed.session.turns ?? [],
+    };
   }
-  return parsed;
+  if (parsed.version !== 2) {
+    throw new Error(`Unsupported session file version: ${parsed.version as number}`);
+  }
+  return {
+    version: 2,
+    modelId: parsed.modelId,
+    savedAt: parsed.savedAt,
+    session: parsed.session,
+    turns: parsed.turns ?? [],
+  };
 }
 
 export async function listSessions(): Promise<string[]> {
@@ -87,7 +119,7 @@ export async function rotateCurrentSession(): Promise<string | null> {
   try {
     const raw = await readFile(currentPath, "utf-8");
     const parsed = JSON.parse(raw) as SavedSessionFile;
-    if (parsed.session?.turns && parsed.session.turns.length > 0) {
+    if (parsed.turns && parsed.turns.length > 0) {
       haveCurrent = true;
       const stamp =
         parsed.savedAt ?? new Date().toISOString();
@@ -102,10 +134,11 @@ export async function rotateCurrentSession(): Promise<string | null> {
   // Write a blank current so the next launch starts fresh. We don't know the
   // model id here, so we preserve any we read, else leave it empty.
   const blank: SavedSessionFile = {
-    version: 1,
+    version: 2,
     modelId: "",
     savedAt: new Date().toISOString(),
-    session: { version: 1, sessionId: "", messages: [] },
+    session: { sessionId: "", messages: [] },
+    turns: [],
   };
   await writeFileAtomic(currentPath, JSON.stringify(blank, null, 2));
 

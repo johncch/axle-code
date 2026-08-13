@@ -2,13 +2,12 @@ import { Box, Text, measureElement, useApp, useInput, useWindowSize, type DOMEle
 import SelectInput from "ink-select-input";
 import TextInput from "./TextInput.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { Agent, ContextUsage } from "@fifthrevision/axle";
+import type { Agent, AgentSession, ContextUsage } from "@fifthrevision/axle";
 import type { Turn } from "@fifthrevision/axle/ui";
 import { writeConfig } from "../config.js";
 import { findEntry, type ModelEntry } from "../models.js";
 import { AUTOSAVE_NAME, listSessions, loadSession, rotateCurrentSession, saveSession } from "../session.js";
 import { formatVersion } from "../version.js";
-import { AnnotationBar } from "./AnnotationBar.js";
 import { GenerationTimer } from "./GenerationTimer.js";
 import { StatusBar } from "./StatusBar.js";
 import { TopBar } from "./TopBar.js";
@@ -18,9 +17,11 @@ import { useAgent } from "./useAgent.js";
 export interface AppProps {
   catalog: ModelEntry[];
   initialEntry: ModelEntry;
-  createAgent: (entry: ModelEntry, session?: Awaited<ReturnType<Agent["snapshot"]>>) => Agent;
-  /** Restored autosave session, if any. Seeds the UI on mount. */
-  initialSession?: Awaited<ReturnType<Agent["snapshot"]>>;
+  createAgent: (entry: ModelEntry, session?: AgentSession) => Agent;
+  /** Restored autosave session, if any. Seeds the agent for continuation. */
+  initialSession?: AgentSession;
+  /** Restored transcript turns, if any. Seeds the UI on mount. */
+  initialTurns?: Turn[];
 }
 
 const COMMANDS: { name: string; desc: string }[] = [
@@ -30,7 +31,6 @@ const COMMANDS: { name: string; desc: string }[] = [
   { name: "/load", desc: "restore a saved session [name]" },
   { name: "/sessions", desc: "list saved sessions" },
   { name: "/clear", desc: "archive current session and start fresh" },
-  { name: "/index", desc: "demo a host annotation lifecycle" },
   { name: "/version", desc: "show build sha + date" },
   { name: "/exit", desc: "quit" },
   { name: "/quit", desc: "quit" },
@@ -59,11 +59,11 @@ function roughLines(turns: Turn[] | undefined): number {
   return n;
 }
 
-export function App({ catalog, initialEntry, createAgent, initialSession }: AppProps) {
+export function App({ catalog, initialEntry, createAgent, initialSession, initialTurns }: AppProps) {
   const [agent, setAgent] = useState<Agent>(() => createAgent(initialEntry, initialSession));
   const [entry, setEntry] = useState<ModelEntry>(initialEntry);
-  const { turns, sessionAnnotations, status, lastError, send, stop, cancel, reset, applyEvent } =
-    useAgent(agent, initialSession);
+  const { turns, status, lastError, send, stop, cancel, reset, applyEvent } =
+    useAgent(agent, { turns: initialTurns });
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<"input" | "picker" | "sessions">("input");
   const [sessionNames, setSessionNames] = useState<string[]>([]);
@@ -88,7 +88,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
   // `scrollTop`: null = follow the bottom (normal chat mode); a number =
   // pinned, counting the content lines hidden above the viewport
   // (rendered as a negative top margin inside the clipping box).
-  const [filled, setFilled] = useState(() => roughLines(initialSession?.turns) >= rows);
+  const [filled, setFilled] = useState(() => roughLines(initialTurns) >= rows);
   const [scrollTop, setScrollTop] = useState<number | null>(null);
   const viewportRef = useRef<DOMElement>(null);
   const contentRef = useRef<DOMElement>(null);
@@ -173,31 +173,63 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
 
   const context = useMemo<ContextUsage | null>(() => {
     try {
-      return agent.context();
+      const base = agent.context();
+      // agent.context() only reflects committed messages. During streaming
+      // the in-progress turn's text isn't in `messagesInternal` yet, so the
+      // raw value is stale until turn:end. Add a rough estimate of the
+      // streaming content (same char/3 heuristic Axle uses) so the status bar
+      // shows context growing live.
+      const streaming = turns.find((t) => t.status === "streaming");
+      if (streaming) {
+        let chars = 0;
+        for (const part of streaming.parts) {
+          if (part.type === "text") chars += part.text.length;
+          else if (part.type === "thinking")
+            chars += (part.text ?? "").length + (part.summary ?? "").length;
+          else if (part.type === "action")
+            chars += JSON.stringify(part.detail ?? {}).length;
+        }
+        const extra = Math.ceil(chars / 3);
+        if (extra > 0)
+          return { ...base, total: base.total + extra, messages: base.messages + extra };
+      }
+      return base;
     } catch {
       return null;
     }
     // Recompute as turns land (history grows) or the model changes.
   }, [agent, turns]);
 
-  const sessionUsage = useMemo(
-    () =>
-      turns.reduce(
-        (acc, t) => (t.usage ? { in: acc.in + t.usage.in, out: acc.out + t.usage.out } : acc),
-        { in: 0, out: 0 },
-      ),
-    [turns],
-  );
-
-  // Demo a persistent, host-owned session annotation (out-of-band UI state that
-  // is not part of the model conversation).
-  useEffect(() => {
-    applyEvent({
-      type: "annotation:start",
-      target: { type: "session" },
-      annotation: { id: "workspace", kind: "workspace", label: `workspace: ${process.cwd()}` },
-    });
-  }, [applyEvent]);
+  const sessionUsage = useMemo(() => {
+    const base = turns.reduce(
+      (acc, t) => (t.usage ? { in: acc.in + t.usage.in, out: acc.out + t.usage.out } : acc),
+      { in: 0, out: 0 },
+    );
+    // Axle only reports usage on `turn:end`, so the in-progress turn
+    // contributes nothing until it settles. Estimate its tokens so the
+    // status bar updates live per part:
+    //   in  — the context that was sent to the model (agent.context().total)
+    //   out — generated text/thinking, estimated with the same chars/3
+    //         heuristic Axle uses internally.
+    const streaming = turns.find((t) => t.status === "streaming");
+    if (streaming) {
+      let chars = 0;
+      for (const part of streaming.parts) {
+        if (part.type === "text") chars += part.text.length;
+        else if (part.type === "thinking")
+          chars += (part.text ?? "").length + (part.summary ?? "").length;
+        else if (part.type === "action")
+          chars += JSON.stringify(part.detail ?? {}).length;
+      }
+      base.out += Math.ceil(chars / 3);
+      try {
+        base.in += agent.context().total;
+      } catch {
+        // ignore — leave in unchanged
+      }
+    }
+    return base;
+  }, [agent, turns]);
 
   useInput((_input, key) => {
     // Ctrl-C: clear input first; if already empty, quit. In raw mode (which
@@ -320,8 +352,8 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
       const session = await agent.snapshot();
       // Skip the autosave when there's nothing to resume — keeps a first run
       // a true fresh start and avoids a stale restore later.
-      if (session.turns && session.turns.length > 0) {
-        await saveSession(AUTOSAVE_NAME, entry.id, session).catch(() => {});
+      if (turns.length > 0) {
+        await saveSession(AUTOSAVE_NAME, entry.id, session, turns).catch(() => {});
       }
     } catch {
       // Snapshot failure shouldn't trap the user — exit anyway.
@@ -362,7 +394,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
     try {
       // Carry the conversation across: snapshot current session, rebuild the
       // agent on the new provider/model with that session restored. The UI's
-      // own accumulator keeps its turns, so scrollback is uninterrupted.
+      // own transcript keeps its turns, so scrollback is uninterrupted.
       const session = await agent.snapshot();
       const nextAgent = createAgent(next, session);
       setAgent(nextAgent);
@@ -380,7 +412,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
   async function doSave(name: string) {
     try {
       const session = await agent.snapshot();
-      const path = await saveSession(name, entry.id, session);
+      const path = await saveSession(name, entry.id, session, turns);
       setNotice(`Saved session to ${path}`);
     } catch (error) {
       setNotice(`Save failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -389,16 +421,16 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
 
   async function doLoad(name: string) {
     try {
-      const { modelId, session } = await loadSession(name);
+      const { modelId, session, turns: savedTurns } = await loadSession(name);
       const loadedEntry = findEntry(catalog, modelId) ?? entry;
       // The viewport re-renders wholesale from the new turns — no screen
       // wiping or remounting needed, the next frame simply is the new state.
       const nextAgent = createAgent(loadedEntry, session);
       setAgent(nextAgent);
       setEntry(loadedEntry);
-      reset({ turns: session.turns, sessionAnnotations: session.sessionAnnotations });
+      reset({ turns: savedTurns });
       setScrollTop(null);
-      setFilled(roughLines(session.turns) >= rows);
+      setFilled(roughLines(savedTurns) >= rows);
       setNotice(`Loaded "${name}" (${loadedEntry.label}).`);
     } catch (error) {
       setNotice(`Load failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -418,13 +450,13 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
       // Persist the live conversation to __current__ first, so the rotation
       // archives the actual session rather than whatever was last autosaved.
       const session = await agent.snapshot();
-      if (session.turns && session.turns.length > 0) {
-        await saveSession(AUTOSAVE_NAME, entry.id, session).catch(() => {});
+      if (turns.length > 0) {
+        await saveSession(AUTOSAVE_NAME, entry.id, session, turns).catch(() => {});
       }
       const archiveName = await rotateCurrentSession();
       const nextAgent = createAgent(entry);
       setAgent(nextAgent);
-      reset({ turns: [], sessionAnnotations: [] });
+      reset({ turns: [] });
       setScrollTop(null);
       setFilled(false);
       setNotice(archiveName ? `Session archived as ${archiveName} and cleared.` : "Cleared. (Nothing to archive.)");
@@ -466,23 +498,6 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
         setNotice(formatVersion());
         return;
       }
-      if (trimmed === "/index") {
-        // Safe anywhere: purely visual demo annotation.
-        const id = `index-${Date.now()}`;
-        applyEvent({
-          type: "annotation:start",
-          target: { type: "session" },
-          annotation: { id, kind: "index", label: "Indexing workspace…", status: "running" },
-        });
-        setTimeout(() => {
-          applyEvent({
-            type: "annotation:end",
-            target: { type: "session" },
-            annotation: { id, kind: "index", label: "Workspace indexed ✓", status: "complete" },
-          });
-        }, 1500);
-        return;
-      }
       setNotice(
         `Wait for the agent to finish, or send a plain message to pause and queue it. (${trimmed.split(/\s/)[0]} needs an idle conversation)`,
       );
@@ -498,8 +513,8 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
       setCompacting(true);
       agent
         .compact()
-        .then((record) =>
-          setNotice(record ? "Context compacted." : "Nothing to compact yet."),
+        .then((applied) =>
+          setNotice(applied ? "Context compacted." : "Nothing to compact yet."),
         )
         .catch((error) =>
           setNotice(`Compact failed: ${error instanceof Error ? error.message : String(error)}`),
@@ -546,23 +561,6 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
     }
     if (trimmed === "/version") {
       setNotice(formatVersion());
-      return;
-    }
-    if (trimmed === "/index") {
-      // Demonstrate an annotation lifecycle: running → complete.
-      const id = `index-${Date.now()}`;
-      applyEvent({
-        type: "annotation:start",
-        target: { type: "session" },
-        annotation: { id, kind: "index", label: "Indexing workspace…", status: "running" },
-      });
-      setTimeout(() => {
-        applyEvent({
-          type: "annotation:end",
-          target: { type: "session" },
-          annotation: { id, kind: "index", label: "Workspace indexed ✓", status: "complete" },
-        });
-      }, 1500);
       return;
     }
     if (trimmed.startsWith("/")) {
@@ -658,8 +656,6 @@ export function App({ catalog, initialEntry, createAgent, initialSession }: AppP
           <Text color="yellow">{notice}</Text>
         </Box>
       ) : null}
-
-      <AnnotationBar annotations={sessionAnnotations} />
 
       {scrollTop !== null ? (
         <Text dimColor>── scrolled · PgDn/↓ to bottom · Esc to follow ──</Text>

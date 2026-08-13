@@ -5,6 +5,28 @@ import { ActionBlock } from "./ActionBlock.js";
 import { Markdown } from "./Markdown.js";
 import { clampLines } from "./render.js";
 
+/**
+ * Width of the compaction progress bar (in characters, excluding brackets).
+ * Picked to be readable in typical 80-col terminals without dominating the row.
+ */
+const COMPACTION_BAR_WIDTH = 20;
+
+function CompactionProgress({ summary, progress }: { summary?: string; progress?: number }) {
+  const pct = progress != null ? Math.round(Math.max(0, Math.min(1, progress)) * 100) : null;
+  const label = summary ?? "compacting context";
+  if (pct != null) {
+    const filled = Math.round((pct / 100) * COMPACTION_BAR_WIDTH);
+    const empty = COMPACTION_BAR_WIDTH - filled;
+    const bar = `${"█".repeat(filled)}${"░".repeat(empty)}`;
+    return (
+      <Text color="yellow">
+        ⤺ {label} [{bar}] {pct}%
+      </Text>
+    );
+  }
+  return <Text color="yellow">⤺ {label}…</Text>;
+}
+
 export const PartView = React.memo(function PartView({ part }: { part: TurnPart }) {
   switch (part.type) {
     case "text":
@@ -26,7 +48,13 @@ export const PartView = React.memo(function PartView({ part }: { part: TurnPart 
     case "citation":
       return <Text>[citations: {part.citations.length}]</Text>;
     case "compaction":
-      return <Text color="yellow">⤺ context compacted</Text>;
+      if (part.status === "running") {
+        return <CompactionProgress summary={part.summary} progress={part.progress} />;
+      }
+      if (part.status === "error") {
+        return <Text color="red">⤺ compaction failed: {part.error}</Text>;
+      }
+      return <Text color="yellow">⤺ context compacted{part.summary ? `: ${part.summary}` : ""}</Text>;
     default:
       return null;
   }

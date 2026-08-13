@@ -78,7 +78,11 @@ export function makeAgentFactory(options: AgentFactoryOptions = {}) {
       },
       session,
     );
-    agent.setCompaction({ compact: compactor.compact, triggers: { beforeTurn: true } });
+    agent.setCompaction({
+      shouldCompactOnTrigger: compactor.shouldCompactOnTrigger,
+      compact: compactor.compact,
+      triggers: { beforeTurn: true },
+    });
     return agent;
   };
   return createAgent;

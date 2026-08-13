@@ -3,4 +3,4 @@ allowBuilds:
   esbuild: true
   protobufjs: true
 minimumReleaseAgeExclude:
-  - '@fifthrevision/axle@0.28.0'
+  - '@fifthrevision/axle@0.30.0 || 0.30.1'

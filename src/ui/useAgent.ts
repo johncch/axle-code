@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Agent, AgentHandle } from "@fifthrevision/axle";
 import { AxleAgentAbortError } from "@fifthrevision/axle";
-import { TurnAccumulator } from "@fifthrevision/axle/ui";
-import type { Annotation, Turn, TurnEvent } from "@fifthrevision/axle/ui";
+import { Transcript } from "@fifthrevision/axle/ui";
+import type { Turn, TurnEvent } from "@fifthrevision/axle/ui";
 import { formatGenerateError } from "../format.js";
 
 export type AgentStatus = "idle" | "streaming";
 
 export interface UseAgentResult {
   turns: Turn[];
-  sessionAnnotations: Annotation[];
   status: AgentStatus;
   lastError: string | null;
   send: (message: string) => void;
@@ -17,9 +16,9 @@ export interface UseAgentResult {
   stop: () => void;
   cancel: () => void;
   clearError: () => void;
-  /** Replace the accumulator's state, e.g. after loading a saved session. */
-  reset: (init?: { turns?: Turn[]; sessionAnnotations?: Annotation[] }) => void;
-  /** Fold a host-originated event (e.g. an annotation) into the UI state. */
+  /** Replace the transcript's state, e.g. after loading a saved session. */
+  reset: (init?: { turns?: Turn[] }) => void;
+  /** Fold a host-originated event into the UI state. */
   applyEvent: (event: TurnEvent) => void;
 }
 
@@ -34,10 +33,10 @@ const FLUSH_MS = 16;
 
 /**
  * Bridges Axle's public event stream into React state. We fold every TurnEvent
- * through our own TurnAccumulator (the pattern a remote/wire UI would use) and
+ * through our own Transcript (the pattern a remote/wire UI would use) and
  * mirror the resulting Turn[] into component state.
  *
- * Events are applied to the accumulator synchronously (so its state is always
+ * Events are applied to the transcript synchronously (so its state is always
  * current for a caller using `applyEvent`), but the mirror into React state is
  * throttled: rapid deltas are coalesced into a single render per frame. A
  * flush is forced immediately on terminal transitions (idle/error) so the final
@@ -48,25 +47,18 @@ export function useAgent(
   /** Seed state (e.g. a restored session) applied synchronously on first
    * render, so the initial frame already shows the transcript — no
    * seed-in-an-effect flash. */
-  initial?: { turns?: Turn[]; sessionAnnotations?: Annotation[] },
+  initial?: { turns?: Turn[] },
 ): UseAgentResult {
-  const accumulatorRef = useRef<TurnAccumulator>(null as unknown as TurnAccumulator);
-  if (!accumulatorRef.current) {
-    accumulatorRef.current = new TurnAccumulator(
-      initial
-        ? { turns: initial.turns ?? [], sessionAnnotations: initial.sessionAnnotations ?? [] }
-        : undefined,
-    );
+  const transcriptRef = useRef<Transcript>(null as unknown as Transcript);
+  if (!transcriptRef.current) {
+    transcriptRef.current = new Transcript(initial?.turns);
   }
   const handleRef = useRef<AgentHandle | null>(null);
   const [turns, setTurns] = useState<Turn[]>(initial?.turns ?? []);
-  const [sessionAnnotations, setSessionAnnotations] = useState<Annotation[]>(
-    initial?.sessionAnnotations ?? [],
-  );
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [lastError, setLastError] = useState<string | null>(null);
 
-  // Coalesced-flush bookkeeping. `dirtyRef` records that the accumulator has
+  // Coalesced-flush bookkeeping. `dirtyRef` records that the transcript has
   // changed since the last React commit; `timerRef` holds the scheduled flush.
   const dirtyRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,9 +70,7 @@ export function useAgent(
     }
     if (!dirtyRef.current) return;
     dirtyRef.current = false;
-    const state = accumulatorRef.current.state;
-    setTurns(state.turns);
-    setSessionAnnotations(state.sessionAnnotations ?? []);
+    setTurns([...transcriptRef.current.turns]);
   }, []);
 
   const scheduleFlush = useCallback(() => {
@@ -90,20 +80,21 @@ export function useAgent(
       timerRef.current = null;
       if (dirtyRef.current) {
         dirtyRef.current = false;
-        const state = accumulatorRef.current.state;
-        setTurns(state.turns);
-        setSessionAnnotations(state.sessionAnnotations ?? []);
+        setTurns([...transcriptRef.current.turns]);
       }
     }, FLUSH_MS);
   }, []);
 
   useEffect(() => {
     const off = agent.on((event) => {
-      accumulatorRef.current.apply(event);
+      transcriptRef.current.apply(event);
       // Terminal events settle the turn — flush immediately so the final frame
       // (and the idle transition) lands without waiting out the throttle.
       const terminal =
-        event.type === "turn:end" || event.type === "error" || event.type === "compaction:end";
+        event.type === "turn:end" ||
+        event.type === "error" ||
+        event.type === "compaction:complete" ||
+        event.type === "compaction:error";
       if (terminal) flushSync();
       else scheduleFlush();
     });
@@ -114,15 +105,11 @@ export function useAgent(
   useEffect(() => () => void flushSync(), [flushSync]);
 
   const reset = useCallback(
-    (init?: { turns?: Turn[]; sessionAnnotations?: Annotation[] }) => {
-      accumulatorRef.current = new TurnAccumulator(
-        init ? { turns: init.turns ?? [], sessionAnnotations: init.sessionAnnotations ?? [] } : undefined,
-      );
-      // Force flushSync to actually emit the new accumulator's state — without
+    (init?: { turns?: Turn[] }) => {
+      transcriptRef.current = new Transcript(init?.turns);
+      // Force flushSync to actually emit the new transcript's state — without
       // this, dirtyRef is false and flushSync bails early, so loaded/cleared
-      // turns never reach React state. (On initial mount this is masked by the
-      // workspace annotation effect happening to schedule a flush afterward,
-      // but that effect doesn't re-run on agent swaps like /load and /clear.)
+      // turns never reach React state.
       dirtyRef.current = true;
       flushSync();
     },
@@ -201,7 +188,7 @@ export function useAgent(
 
   const applyEvent = useCallback(
     (event: TurnEvent) => {
-      accumulatorRef.current.apply(event);
+      transcriptRef.current.apply(event);
       scheduleFlush();
     },
     [scheduleFlush],
@@ -209,7 +196,6 @@ export function useAgent(
 
   return {
     turns,
-    sessionAnnotations,
     status,
     lastError,
     send,

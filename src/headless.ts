@@ -1,4 +1,4 @@
-import { TurnAccumulator } from "@fifthrevision/axle/ui";
+import { Transcript } from "@fifthrevision/axle/ui";
 import type { TurnEvent } from "@fifthrevision/axle/ui";
 import { buildAgent } from "./agent.js";
 import { formatGenerateError } from "./format.js";
@@ -10,9 +10,9 @@ const prompt =
 
 const { agent, model, providerLabel } = buildAgent({ tools: codingTools });
 
-// The TUI will fold the same public event stream through its own accumulator.
+// The TUI will fold the same public event stream through its own transcript.
 // Here we do it headlessly to smoke-test the contract end to end.
-const accumulator = new TurnAccumulator();
+const transcript = new Transcript();
 
 function describe(event: TurnEvent): string {
   switch (event.type) {
@@ -38,7 +38,7 @@ function describe(event: TurnEvent): string {
 }
 
 agent.on((event) => {
-  accumulator.apply(event);
+  transcript.apply(event);
   console.log(`  ▸ ${describe(event)}`);
 });
 
@@ -47,8 +47,8 @@ console.log(`[prompt] ${prompt}\n`);
 
 try {
   const result = await agent.send(prompt).final;
-  console.log("\n[events folded into accumulator] final turns:");
-  for (const turn of accumulator.state.turns) {
+  console.log("\n[events folded into transcript] final turns:");
+  for (const turn of transcript.turns) {
     const kinds = turn.parts.map((p) => p.type).join(", ");
     console.log(`  • ${turn.owner} turn (${turn.status}): [${kinds}]`);
   }

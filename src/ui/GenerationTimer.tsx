@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from "react";
 interface GenerationTimerProps {
   /** Whether generation is currently active. */
   active: boolean;
+  /** Temporary status message rendered inline after the stopwatch. */
+  message?: string | null;
 }
 
 function format(seconds: number): string {
@@ -17,7 +19,7 @@ function format(seconds: number): string {
  * (showing the final elapsed time) once it completes. Resets to 0:00 on the
  * next generation.
  */
-export function GenerationTimer({ active }: GenerationTimerProps) {
+export function GenerationTimer({ active, message }: GenerationTimerProps) {
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef<number | null>(null);
 
@@ -44,10 +46,16 @@ export function GenerationTimer({ active }: GenerationTimerProps) {
   }, [active]);
 
   return (
-    <Box>
-      <Text color="cyan">
+    <Box flexWrap="wrap">
+      <Text color={active ? "cyan" : "gray"}>
         ⏱ {format(elapsed)}
       </Text>
+      {message ? (
+        <Text color="yellow">
+          {"   "}
+          {message}
+        </Text>
+      ) : null}
     </Box>
   );
 }

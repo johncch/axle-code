@@ -120,6 +120,13 @@ export function TextInput({
 
   useInput(
     (input, key) => {
+      // xterm's "modifyOtherKeys" reports Shift+Enter (and other modified
+      // Enters) as CSI 27 ; <modifier> ; 13 ~. Ink doesn't parse that form, so
+      // it reaches us as the literal string "[27;2;13~" (the leading ESC is
+      // stripped in useInput). Decode it so Shift+Enter inserts a newline
+      // rather than that garbage being typed into the prompt.
+      const modifiedEnter = /^\[27;\d+;13~$/.exec(input);
+
       if (
         key.upArrow ||
         key.downArrow ||
@@ -130,7 +137,9 @@ export function TextInput({
         return;
       }
 
-      if (key.return) {
+      // Plain Enter submits. Shift/meta+Enter — and the modifyOtherKeys Enter
+      // sequences above — insert a newline instead.
+      if (key.return && !key.shift && !key.meta && !modifiedEnter) {
         onSubmit?.(value);
         return;
       }
@@ -141,7 +150,11 @@ export function TextInput({
         let offset = prev.cursorOffset;
         let next = current;
 
-        if (key.leftArrow) {
+        if (key.return || modifiedEnter) {
+          // Shift/meta+Enter: insert a newline at the cursor.
+          next = current.slice(0, offset) + "\n" + current.slice(offset);
+          offset += 1;
+        } else if (key.leftArrow) {
           if (!showCursor) return prev;
           offset = wordMod ? backwardWord(current, offset) : offset - 1;
         } else if (key.rightArrow) {

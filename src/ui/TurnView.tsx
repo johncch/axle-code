@@ -3,7 +3,7 @@ import React from "react";
 import type { Turn, TurnPart } from "@fifthrevision/axle/ui";
 import { ActionBlock } from "./ActionBlock.js";
 import { Markdown } from "./Markdown.js";
-import { clampLines } from "./render.js";
+import { tailLines } from "./render.js";
 
 /**
  * Width of the compaction progress bar (in characters, excluding brackets).
@@ -32,13 +32,21 @@ export const PartView = React.memo(function PartView({ part }: { part: TurnPart 
     case "text":
       return <Markdown>{part.text}</Markdown>;
     case "thinking":
-      if (part.redacted) return <Text>💭 [thinking redacted]</Text>;
+      if (part.redacted) return <Text dimColor>💭 [thinking redacted]</Text>;
       return part.text ? (
-        <Box flexDirection="column">
-          <Text>💭 thinking</Text>
-          <Text>
-            {clampLines(part.text, 8)}
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold dimColor>
+            💭 thinking
           </Text>
+          <Box
+            marginLeft={2}
+            borderStyle="round"
+            borderColor="gray"
+            paddingLeft={1}
+            paddingRight={1}
+          >
+            <Text dimColor>{tailLines(part.text, 8)}</Text>
+          </Box>
         </Box>
       ) : null;
     case "action":

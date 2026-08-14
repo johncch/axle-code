@@ -573,6 +573,19 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
 
   const busy = status === "streaming" || switching || compacting;
 
+  // The single status message shown inline with the stopwatch. The busy
+  // variants take precedence over transient notices so "Switching to X…"
+  // (a notice) doesn't fight the "…switching model (input disabled)" line.
+  const statusMessage = switching
+    ? "…switching model (input disabled)"
+    : compacting
+      ? "…compacting context (input disabled)"
+      : cancelling
+        ? "…cancelling"
+        : status === "streaming"
+          ? "working — type below to pause & steer, Esc to cancel"
+          : notice;
+
   // One fixed page (the alternate screen has no scrollback): a clipping
   // viewport over the full in-memory transcript, then the chrome docked below.
   //
@@ -651,31 +664,14 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
         </Box>
       ) : null}
 
-      {notice ? (
-        <Box marginTop={1}>
-          <Text color="yellow">{notice}</Text>
-        </Box>
-      ) : null}
-
       {scrollTop !== null ? (
         <Text dimColor>── scrolled · PgDn/↓ to bottom · Esc to follow ──</Text>
       ) : null}
 
-      <GenerationTimer active={status === "streaming"} />
+      <GenerationTimer active={status === "streaming"} message={statusMessage} />
 
       {mode === "input" ? (
         <Box flexDirection="column" marginTop={1}>
-          {busy ? (
-            <Text color="cyan">
-              {switching
-                ? "…switching model (input disabled)"
-                : compacting
-                  ? "…compacting context (input disabled)"
-                  : cancelling
-                    ? "…cancelling"
-                    : "working — type below to pause & steer, Esc to cancel"}
-            </Text>
-          ) : null}
           <Box>
             <Text color="blue">❯ </Text>
             <TextInput

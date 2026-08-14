@@ -6,13 +6,12 @@ import { TurnView } from "./TurnView.js";
 import {
   STATUS_COLOR,
   STATUS_GLYPH,
-  clampLines,
   oneLineParams,
   resultToText,
   tailLines,
 } from "./render.js";
 
-const MAX_RESULT_LINES = 12;
+const MAX_RESULT_LINES = 10;
 
 function actionLabel(part: ActionPart): { name: string; detailText: string } {
   switch (part.kind) {
@@ -69,15 +68,25 @@ export const ActionBlock = React.memo(function ActionBlock({ part }: { part: Act
       ) : null}
 
       {text ? (
-        <Box marginLeft={2} borderStyle="round" borderColor="gray" paddingLeft={1} paddingRight={1}>
-          {/* In-progress (streaming) results use a tail window so the live
-              region stays within the viewport; completed results are already
-              final and can be head-clamped. */}
-          <Text color={tone === "error" ? "red" : undefined}>
-            {status === "running"
-              ? tailLines(text, MAX_RESULT_LINES)
-              : clampLines(text, MAX_RESULT_LINES)}
-          </Text>
+        <Box
+          marginLeft={2}
+          borderStyle="round"
+          borderColor="gray"
+          paddingLeft={1}
+          paddingRight={1}
+          flexDirection="column"
+        >
+          {/* Render one line per <Text> so `truncate-end` clips each line to
+              the box's available width instead of collapsing the whole result
+              into a single truncated line (which is what a single multi-line
+              <Text wrap="truncate-end"> would do). */}
+          {tailLines(text, MAX_RESULT_LINES).split("\n").map((line, index) => (
+            // A single space keeps blank lines from collapsing (Ink skips
+            // empty text nodes), preserving the result's vertical shape.
+            <Text key={index} color={tone === "error" ? "red" : undefined} wrap="truncate-end">
+              {line || " "}
+            </Text>
+          ))}
         </Box>
       ) : null}
     </Box>

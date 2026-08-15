@@ -11,7 +11,15 @@ const pkgRoot = resolve(here, "..");
 const tsx = resolve(pkgRoot, "node_modules/.bin/tsx");
 const entry = resolve(pkgRoot, "src/index.tsx");
 
-const child = spawn(tsx, [entry], { stdio: "inherit", cwd: process.cwd() });
+// React picks its development or production build from NODE_ENV when it is
+// first imported. Running from source with no build step leaves NODE_ENV unset,
+// which silently gets the development build — ~9% more CPU per keystroke, and
+// noticeably worse worst-case input latency. `pnpm dev` is unaffected.
+const child = spawn(tsx, [entry], {
+  stdio: "inherit",
+  cwd: process.cwd(),
+  env: { ...process.env, NODE_ENV: process.env.NODE_ENV ?? "production" },
+});
 child.on("exit", (code, signal) => {
   if (signal) process.kill(process.pid, signal);
   else process.exit(code ?? 0);

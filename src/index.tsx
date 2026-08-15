@@ -32,5 +32,19 @@ render(
     initialSession={resume?.session}
     initialTurns={resume?.turns}
   />,
-  { exitOnCtrlC: false, alternateScreen: true },
+  {
+    exitOnCtrlC: false,
+    alternateScreen: true,
+    // Enhanced key reporting: Shift+Enter becomes a real `key.return + shift`
+    // event instead of a raw `CSI 27;2;13~`, and Esc arrives as `CSI 27u`,
+    // which skips Ink's 20ms wait-and-see timer for a bare escape byte.
+    //
+    // "enabled" rather than "auto": auto probes with `CSI ?u` from Ink's
+    // constructor, before `useInput` puts stdin in raw mode, so the terminal's
+    // reply sits in the line-discipline buffer until after the 200ms detection
+    // window — then leaks into the prompt as a literal "[?0u". Enabling
+    // unconditionally sends no probe; terminals without support simply ignore
+    // the enable sequence, and TextInput keeps its legacy decode for them.
+    kittyKeyboard: { mode: "enabled", flags: ["disambiguateEscapeCodes"] },
+  },
 );

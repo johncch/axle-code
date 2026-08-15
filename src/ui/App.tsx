@@ -1,4 +1,13 @@
-import { Box, Text, measureElement, useApp, useInput, useWindowSize, type DOMElement } from "ink";
+import {
+  Box,
+  Text,
+  measureElement,
+  useApp,
+  useInput,
+  useStdout,
+  useWindowSize,
+  type DOMElement,
+} from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "./TextInput.js";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -73,7 +82,31 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   const [cancelling, setCancelling] = useState(false);
   const quittingRef = useRef(false);
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const { rows } = useWindowSize();
+
+  // Real mouse reporting (button tracking + SGR coordinates). Without it the
+  // terminal falls back to "alternate scroll", translating the wheel into ↑/↓
+  // — indistinguishable from the keys, which is why the two behaviours could
+  // not be separated before. With it the wheel arrives as its own sequence.
+  //
+  // The cost: while tracking is on the terminal hands mouse events to us
+  // instead of selecting text, so selection needs a modifier held (Shift, or
+  // Option in some terminals).
+  //
+  // Restoring on exit matters more than usual — leaving tracking enabled means
+  // the user's shell receives mouse escape codes on every scroll — so the
+  // teardown is also wired to process exit, which `forceQuit`'s process.exit()
+  // still runs.
+  useEffect(() => {
+    const disable = () => stdout.write("\x1b[?1006l\x1b[?1000l");
+    stdout.write("\x1b[?1000h\x1b[?1006h");
+    process.on("exit", disable);
+    return () => {
+      process.off("exit", disable);
+      disable();
+    };
+  }, [stdout]);
 
   // The transcript is a viewport over in-memory history (the tmux model: the
   // alternate screen has no scrollback, so we own scrolling ourselves).
@@ -249,9 +282,18 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       }
       return;
     }
-    // Viewport scrolling (tmux copy-mode-lite): PgUp/PgDn page, ↑/↓ step —
-    // most terminals translate the mouse wheel into arrow keys on the
-    // alternate screen. Only in input mode: the pickers own ↑/↓ themselves.
+    // Mouse wheel. Ink has no mapping for SGR mouse reports, so they arrive as
+    // their literal text with the ESC stripped: `[<{button};{col};{row}M`,
+    // where button 64 is wheel-up and 65 wheel-down. TextInput drops the same
+    // sequences rather than typing them (see its escape-sequence guard).
+    const wheel = /^\[<(64|65);\d+;\d+M$/.exec(_input);
+    if (wheel) {
+      scrollBy(wheel[1] === "64" ? -3 : 3);
+      return;
+    }
+    // Viewport scrolling (tmux copy-mode-lite): PgUp/PgDn page. ↑/↓ belong to
+    // the prompt's cursor, so they never scroll. Only in input mode: the
+    // pickers own their own keys.
     if (mode === "input") {
       const page = Math.max(1, sizeRef.current.viewport - 1);
       if (key.pageUp) {
@@ -262,15 +304,10 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
         scrollBy(page);
         return;
       }
-      if (key.upArrow) {
-        scrollBy(-2);
-        return;
-      }
-      if (key.downArrow) {
-        scrollBy(2);
-        return;
-      }
     }
+    // Esc cancels the running turn, and does nothing else: it used to also
+    // resume follow-mode, which made "Esc to follow" an invitation to kill the
+    // turn by accident. PgDn returns to the bottom instead.
     if (key.escape) {
       if (mode === "picker" || mode === "sessions") {
         setMode("input");
@@ -278,8 +315,6 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       } else if (status === "streaming") {
         cancel();
         setCancelling(true);
-      } else if (scrollTop !== null) {
-        setScrollTop(null);
       }
       return;
     }
@@ -596,7 +631,8 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   //   layout, so streaming never lags or flashes.
   // - Pinned (scrollTop set): a negative top margin slides the transcript
   //   down inside the clip window, revealing older lines; new content keeps
-  //   appending below, out of view, until PgDn/Esc resumes following.
+  //   appending below, out of view, until PgDn reaches the bottom and resumes
+  //   following (sending a message does too).
   return (
     <Box flexDirection="column" height={rows}>
       <TopBar />
@@ -665,7 +701,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       ) : null}
 
       {scrollTop !== null ? (
-        <Text dimColor>── scrolled · PgDn/↓ to bottom · Esc to follow ──</Text>
+        <Text dimColor>── scrolled · PgDn to bottom ──</Text>
       ) : null}
 
       <GenerationTimer active={status === "streaming"} message={statusMessage} />

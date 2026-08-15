@@ -4,7 +4,7 @@
 // Notation: "|" marks the cursor in both input and expected output, so a case
 // reads as the motion it describes rather than as a pair of integers.
 import { describe, expect, it } from "vitest";
-import { backwardWord, forwardWord } from "../src/ui/TextInput.js";
+import { backwardWord, forwardWord, lineDown, lineUp } from "../src/ui/TextInput.js";
 
 function split(marked: string): [string, number] {
   const offset = marked.indexOf("|");
@@ -92,5 +92,65 @@ describe("backwardWord (start of the word to the left)", () => {
 describe("round trip", () => {
   it("forward then backward returns to the same word start", () => {
     expect(back(fwd("|hello brave world"))).toBe("|hello brave world");
+  });
+});
+
+// Line motion. Same "|" notation; "\n" is written literally in the cases so a
+// two-line value reads as one string.
+const up = (marked: string) => {
+  const [value, offset] = split(marked);
+  return mark(value, lineUp(value, offset));
+};
+
+const down = (marked: string) => {
+  const [value, offset] = split(marked);
+  return mark(value, lineDown(value, offset));
+};
+
+describe("lineUp", () => {
+  it("keeps the column on the line above", () => {
+    expect(up("hello\nwo|rld")).toBe("he|llo\nworld");
+  });
+
+  it("clamps to the end of a shorter line above", () => {
+    expect(up("hi\nlong|er")).toBe("hi|\nlonger");
+  });
+
+  it("is a no-op on the first line", () => {
+    expect(up("hel|lo\nworld")).toBe("hel|lo\nworld");
+  });
+
+  it("is a no-op with no line break at all", () => {
+    expect(up("hel|lo")).toBe("hel|lo");
+  });
+
+  it("lands on an empty line", () => {
+    expect(up("a\n\nb|")).toBe("a\n|\nb");
+  });
+
+  it("moves from the start of a line to the start of the one above", () => {
+    expect(up("hello\n|world")).toBe("|hello\nworld");
+  });
+});
+
+describe("lineDown", () => {
+  it("keeps the column on the line below", () => {
+    expect(down("he|llo\nworld")).toBe("hello\nwo|rld");
+  });
+
+  it("clamps to the end of a shorter line below", () => {
+    expect(down("long|er\nhi")).toBe("longer\nhi|");
+  });
+
+  it("is a no-op on the last line", () => {
+    expect(down("hello\nwor|ld")).toBe("hello\nwor|ld");
+  });
+
+  it("lands on an empty line", () => {
+    expect(down("|a\n\nb")).toBe("a\n|\nb");
+  });
+
+  it("crosses three lines one at a time", () => {
+    expect(down(down("x|1\ny2\nz3"))).toBe("x1\ny2\nz|3");
   });
 });

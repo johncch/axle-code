@@ -28,11 +28,27 @@ const KEY = {
   ctrlE: "\x05",
   ctrlU: "\x15",
   ctrlK: "\x0b",
+  up: "\x1b[A",
+  down: "\x1b[B",
+  enter: "\r",
+  // Kitty keyboard protocol (enabled in src/index.tsx): Enter is codepoint 13,
+  // modifier 2 = shift.
+  kittyEnter: "\x1b[13u",
+  kittyShiftEnter: "\x1b[13;2u",
+  // What a legacy terminal sends for Shift+Enter when it has modifyOtherKeys
+  // on: Ink has no mapping for it, so it arrives as literal text.
+  legacyShiftEnter: "\x1b[27;2;13~",
 } as const;
 
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
-function Harness({ onValue }: { onValue?: (v: string) => void }) {
+function Harness({
+  onValue,
+  onSubmit,
+}: {
+  onValue?: (v: string) => void;
+  onSubmit?: (v: string) => void;
+}) {
   const [value, setValue] = useState("");
   return (
     <TextInput
@@ -41,6 +57,7 @@ function Harness({ onValue }: { onValue?: (v: string) => void }) {
         setValue(v);
         onValue?.(v);
       }}
+      onSubmit={onSubmit}
     />
   );
 }
@@ -51,10 +68,14 @@ function Harness({ onValue }: { onValue?: (v: string) => void }) {
  * whitespace around the word it removed.
  */
 async function editor() {
-  const { stdin, lastFrame, unmount } = render(<Harness />);
+  const submissions: string[] = [];
+  const { stdin, lastFrame, unmount } = render(
+    <Harness onSubmit={(v) => submissions.push(v)} />,
+  );
   await tick();
   return {
     unmount,
+    submissions,
     async type(...keys: string[]) {
       for (const k of keys) {
         stdin.write(k);
@@ -90,6 +111,66 @@ describe("TextInput key handling", () => {
     await ed.type(KEY.cmdLeft + KEY.cmdLeft + KEY.cmdLeft);
     await ed.type("X");
     expect(ed.text()).toBe("helloXbravenewworld");
+    ed.unmount();
+  });
+
+  it.each([
+    ["plain Enter (\\r)", KEY.enter],
+    ["kitty Enter (CSI 13u)", KEY.kittyEnter],
+  ])("submits on %s", async (_label, key) => {
+    const ed = await editor();
+    await ed.type("send this", key);
+    expect(ed.submissions).toEqual(["send this"]);
+    expect(ed.text()).toBe("sendthis");
+    ed.unmount();
+  });
+
+  // Both encodings must work: the kitty protocol is negotiated at startup, and
+  // a terminal that declines it can only report Shift+Enter as CSI 27;2;13~.
+  it.each([
+    ["kitty (CSI 13;2u)", KEY.kittyShiftEnter],
+    ["legacy modifyOtherKeys (CSI 27;2;13~)", KEY.legacyShiftEnter],
+  ])("inserts a newline on Shift+Enter via %s", async (_label, key) => {
+    const ed = await editor();
+    await ed.type("first", key, "second");
+    expect(ed.submissions).toEqual([]);
+    expect(ed.text()).toContain("\n");
+    ed.unmount();
+  });
+
+  it("moves the cursor between lines with up/down once the draft is multi-line", async () => {
+    const ed = await editor();
+    await ed.type("first", KEY.kittyShiftEnter, "second");
+    await ed.type(KEY.up, "X");
+    expect(ed.text()).toBe("firstX\nsecond");
+    await ed.type(KEY.down, "Y");
+    expect(ed.text()).toBe("firstX\nsecondY");
+    ed.unmount();
+  });
+
+  // Nothing to move to on a single line, so the cursor stays put rather than
+  // jumping to the start or end.
+  it("leaves the cursor alone on up/down in a single-line draft", async () => {
+    const ed = await editor();
+    await ed.type("hello", KEY.up, KEY.down, "X");
+    expect(ed.text()).toBe("helloX");
+    ed.unmount();
+  });
+
+  // Anything else Ink can't map arrives as literal text. Typing that into the
+  // prompt is worse than ignoring the key, so it must not appear in the value.
+  // Includes terminal *reports*, not just keys: a kitty query response or a
+  // cursor-position report can arrive on stdin at any time, and Ink passes
+  // anything it can't map through as literal text.
+  it.each([
+    ["kitty query response", "\x1b[?0u"],
+    ["cursor position report", "\x1b[24;80R"],
+    ["unmapped CSI", "\x1b[200;3~"],
+  ])("never types %s into the prompt", async (_label, sequence) => {
+    const ed = await editor();
+    await ed.type("hello", sequence);
+    expect(ed.text()).toBe("hello");
+    expect(ed.submissions).toEqual([]);
     ed.unmount();
   });
 

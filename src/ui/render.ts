@@ -2,18 +2,17 @@ import type { ActionResult } from "@fifthrevision/axle/ui";
 
 export type ActionStatus = "pending" | "running" | "complete" | "cancelled" | "error";
 
-export const STATUS_GLYPH: Record<ActionStatus, string> = {
-  pending: "○",
-  running: "◐",
-  complete: "✔",
-  cancelled: "⊘",
-  error: "✖",
-};
+/** The one marker every step renders with: thinking, tools, sub-agents. */
+export const DOT = "●";
 
-export const STATUS_COLOR: Record<ActionStatus, string> = {
-  pending: "gray",
-  running: "cyan",
-  complete: "green",
+/**
+ * Blue while a step is live, white once it has landed. The two failure states
+ * keep their own colour — a cancelled or failed step reads as neither.
+ */
+export const DOT_COLOR: Record<ActionStatus, string> = {
+  pending: "blue",
+  running: "blue",
+  complete: "white",
   cancelled: "yellow",
   error: "red",
 };
@@ -23,7 +22,9 @@ export function oneLineParams(params: Record<string, unknown>): string {
     let value: string;
     if (typeof v === "string") value = v;
     else value = JSON.stringify(v);
-    if (value.length > 60) value = value.slice(0, 57) + "…";
+    // Collapse newlines and runs of whitespace: a bash command or file body
+    // would otherwise break the row across lines before truncation can clip it.
+    value = value.replace(/\s+/g, " ").trim();
     return `${k}: ${value}`;
   });
   return parts.join(", ");

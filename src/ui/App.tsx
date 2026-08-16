@@ -737,12 +737,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
         </Box>
       ) : null}
 
-      <StatusBar
-        entry={entry}
-        context={context}
-        sessionUsage={sessionUsage}
-        hint="/model · /compact · /save · /load · /clear · /version · /exit"
-      />
+      <StatusBar entry={entry} context={context} sessionUsage={sessionUsage} />
       </Box>
     </Box>
   );

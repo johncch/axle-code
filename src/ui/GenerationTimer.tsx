@@ -45,10 +45,11 @@ export function GenerationTimer({ active, message }: GenerationTimerProps) {
     return () => clearInterval(id);
   }, [active]);
 
+  // marginLeft lines the row up with the prompt's text, which starts after "❯ ".
   return (
-    <Box flexWrap="wrap">
-      <Text color={active ? "cyan" : "gray"}>
-        ⏱ {format(elapsed)}
+    <Box flexWrap="wrap" marginTop={1} marginLeft={2}>
+      <Text color={active ? "cyan" : undefined} dimColor={!active}>
+        {format(elapsed)}
       </Text>
       {message ? (
         <Text color="yellow">

@@ -8,10 +8,9 @@ export interface StatusBarProps {
   entry: ModelEntry;
   context: ContextUsage | null;
   sessionUsage: { in: number; out: number };
-  hint: string;
 }
 
-export const StatusBar = React.memo(function StatusBar({ entry, context, sessionUsage, hint }: StatusBarProps) {
+export const StatusBar = React.memo(function StatusBar({ entry, context, sessionUsage }: StatusBarProps) {
   const ctxText = context
     ? context.limit
       ? `ctx ${formatTokens(context.total)}/${formatTokens(context.limit)} (${Math.round(
@@ -33,10 +32,6 @@ export const StatusBar = React.memo(function StatusBar({ entry, context, session
       ) : null}
       <Text dimColor>
         {"   "}session ↑{formatTokens(sessionUsage.in)} ↓{formatTokens(sessionUsage.out)}
-      </Text>
-      <Text dimColor>
-        {"   "}
-        {hint}
       </Text>
     </Box>
   );

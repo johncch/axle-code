@@ -3,7 +3,7 @@ import React from "react";
 import type { Turn, TurnPart } from "@fifthrevision/axle/ui";
 import { ActionBlock } from "./ActionBlock.js";
 import { Markdown } from "./Markdown.js";
-import { tailLines } from "./render.js";
+import { DOT, tailLines } from "./render.js";
 
 /**
  * Width of the compaction progress bar (in characters, excluding brackets).
@@ -27,17 +27,31 @@ function CompactionProgress({ summary, progress }: { summary?: string; progress?
   return <Text color="yellow">⤺ {label}…</Text>;
 }
 
-export const PartView = React.memo(function PartView({ part }: { part: TurnPart }) {
+export const PartView = React.memo(function PartView({
+  part,
+  active = false,
+}: {
+  part: TurnPart;
+  /** The live tail of a streaming turn — drives the dot's blue/white. */
+  active?: boolean;
+}) {
   switch (part.type) {
     case "text":
-      return <Markdown>{part.text}</Markdown>;
+      return (
+        <Box marginTop={1}>
+          <Markdown>{part.text}</Markdown>
+        </Box>
+      );
     case "thinking":
-      if (part.redacted) return <Text dimColor>💭 [thinking redacted]</Text>;
+      if (part.redacted) return <Text dimColor>[thinking redacted]</Text>;
       return part.text ? (
         <Box flexDirection="column" marginTop={1}>
-          <Text bold dimColor>
-            💭 thinking
-          </Text>
+          <Box>
+            <Text color={active ? "blue" : "white"}>{DOT} </Text>
+            <Text bold dimColor>
+              thinking
+            </Text>
+          </Box>
           <Box
             marginLeft={2}
             borderStyle="round"
@@ -68,18 +82,13 @@ export const PartView = React.memo(function PartView({ part }: { part: TurnPart 
   }
 });
 
-export function TurnHeader({ turn, nested = false }: { turn: Turn; nested?: boolean }) {
-  const isUser = turn.owner === "user";
-  const header = nested
-    ? isUser
-      ? "↳ task"
-      : "↳ sub-agent"
-    : isUser
-      ? "❯ you"
-      : "● axle-code";
+// Only sub-agent turns still carry a header: at the top level the caret is the
+// user's whole prefix, and the agent's own turns are unlabelled — their parts
+// each announce themselves with a dot.
+export function TurnHeader({ turn }: { turn: Turn }) {
   return (
-    <Text bold={!nested} color={isUser ? "blue" : "green"}>
-      {header}
+    <Text color={turn.owner === "user" ? "blue" : "green"}>
+      {turn.owner === "user" ? "↳ task" : "↳ sub-agent"}
     </Text>
   );
 }
@@ -106,12 +115,38 @@ export function TurnFooter({ turn }: { turn: Turn }) {
 // finalized parts and completed lines of the in-flight text part move to
 // <Static> incrementally, so only the actively-changing tail renders live.
 function TurnViewImpl({ turn, nested = false }: { turn: Turn; nested?: boolean }) {
+  // A user turn is its text, behind the same caret the prompt uses. The inner
+  // Box is what makes wrapped lines align under the first character instead of
+  // running back to column 0.
+  if (turn.owner === "user" && !nested) {
+    const typed = turn.parts
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join("")
+      .trim();
+    return (
+      <Box marginTop={1}>
+        <Text color="blue">❯ </Text>
+        <Box flexGrow={1}>
+          <Text>{typed}</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // Agent turns are unwrapped: no header, no indent, so every dot sits at
+  // column 0. Vertical spacing belongs to the parts, which each carry one
+  // blank line above them — the turn adding its own would double it.
+  const lastIndex = turn.parts.length - 1;
   return (
-    <Box flexDirection="column" marginTop={nested ? 0 : 1}>
-      <TurnHeader turn={turn} nested={nested} />
-      <Box flexDirection="column" marginLeft={2}>
-        {turn.parts.map((part) => (
-          <PartView key={part.id} part={part} />
+    <Box flexDirection="column">
+      {nested ? <TurnHeader turn={turn} /> : null}
+      <Box flexDirection="column" marginLeft={nested ? 2 : 0}>
+        {turn.parts.map((part, index) => (
+          <PartView
+            key={part.id}
+            part={part}
+            active={turn.status === "streaming" && index === lastIndex}
+          />
         ))}
         <TurnFooter turn={turn} />
       </Box>

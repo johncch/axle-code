@@ -14,12 +14,17 @@ export const Markdown = React.memo(function Markdown({ children }: { children: s
     // which misses Ink's own color detection (FORCE_COLOR, CI, etc.) — chalk
     // level is what Ink uses, so mirror it. Level 0 emits plain text, keeping
     // piped output and tests clean.
+    // Trim the leading/trailing blank lines markdansi wraps the block in:
+    // vertical rhythm is the caller's margin, so leaving them here would
+    // double the gap on one side and not the other.
     () =>
       renderMarkdown(children, {
         width,
         color: chalk.level > 0,
         hyperlinks: false,
-      }),
+      })
+        .replace(/^\n+/, "")
+        .replace(/\n+$/, ""),
     [children, width],
   );
   // The output already carries ANSI styles and is pre-wrapped to the terminal

@@ -1,15 +1,8 @@
 import { Box, Text } from "ink";
-import Spinner from "ink-spinner";
 import React from "react";
 import type { ActionPart } from "@fifthrevision/axle/ui";
 import { TurnView } from "./TurnView.js";
-import {
-  STATUS_COLOR,
-  STATUS_GLYPH,
-  oneLineParams,
-  resultToText,
-  tailLines,
-} from "./render.js";
+import { DOT, DOT_COLOR, oneLineParams, resultToText, tailLines } from "./render.js";
 
 const MAX_RESULT_LINES = 10;
 
@@ -23,7 +16,7 @@ function actionLabel(part: ActionPart): { name: string; detailText: string } {
           : oneLineParams(part.detail.parameters),
       };
     case "agent":
-      return { name: `🤖 ${part.detail.name}`, detailText: "" };
+      return { name: part.detail.name, detailText: "" };
     case "provider-tool":
       return { name: part.detail.name, detailText: "" };
   }
@@ -37,20 +30,24 @@ export const ActionBlock = React.memo(function ActionBlock({ part }: { part: Act
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Box>
-        <Box marginRight={1}>
-          {status === "running" ? (
-            <Text color="cyan">
-              <Spinner type="dots" />
-            </Text>
-          ) : (
-            <Text color={STATUS_COLOR[status]}>{STATUS_GLYPH[status]}</Text>
-          )}
+      {/* One row, always: the params take the leftover width and clip at the
+          right edge rather than wrapping the call across lines. Gaps are
+          margins, not spaces inside the Texts — a space in a shrinkable Text
+          is the first thing flex drops when the row overflows. */}
+      <Box flexWrap="nowrap">
+        <Box flexShrink={0}>
+          <Text color={DOT_COLOR[status]}>{DOT}</Text>
         </Box>
-        <Text bold color="magenta">
-          {name}
-        </Text>
-        {detailText ? <Text> {detailText}</Text> : null}
+        <Box flexShrink={0} marginLeft={1}>
+          <Text bold color="magenta">
+            {name}
+          </Text>
+        </Box>
+        {detailText ? (
+          <Box flexGrow={1} flexShrink={1} marginLeft={1}>
+            <Text wrap="truncate-end">{detailText}</Text>
+          </Box>
+        ) : null}
       </Box>
 
       {children && children.length > 0 ? (

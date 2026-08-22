@@ -46,6 +46,19 @@ For use outside this repo, put a global credentials + config there:
 - **`~/.axle/config.json`** — preferences; currently `{ "defaultModel": "…" }`.
   The TUI writes this whenever you switch models, so the next launch resumes on
   your last model.
+- **`.axle/settings.json`** or **`~/.axle/settings.json`** — hand-edited user
+  settings, layered (local `.axle/` wins on conflicts, global fills the rest).
+  Currently supports `theme` token overrides and auto-compaction tuning:
+  ```json
+  {
+    "theme": { "accent": "green", "faint": "gray:dim" },
+    "compaction": { "threshold": 100000, "target": 30000 }
+  }
+  ```
+  `thresholdTokens` is the estimated context size at which auto-compaction
+  triggers before a turn; `targetTokens` is what it shrinks toward. Omit a
+  block (or an individual key) to keep the defaults. A broken file or a bad
+  value is ignored — never blocks launch.
 
 Key precedence (first found wins): a local `axle-code/.env`, then
 `~/.axle/credentials`. Start model precedence: `AXLE_CODE_MODEL` env → saved

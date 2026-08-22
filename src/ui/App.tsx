@@ -19,6 +19,8 @@ import { AUTOSAVE_NAME, listSessions, loadSession, rotateCurrentSession, saveSes
 import { formatVersion } from "../version.js";
 import { GenerationTimer } from "./GenerationTimer.js";
 import { StatusBar } from "./StatusBar.js";
+import { theme } from "./theme.js";
+import { ThemeText } from "./ThemeText.js";
 import { TopBar } from "./TopBar.js";
 import { TurnView } from "./TurnView.js";
 import { useAgent } from "./useAgent.js";
@@ -151,10 +153,10 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     function Item({ isSelected, label, value }: { isSelected?: boolean; label: string; value?: string }) {
       if (value && availableByLabel.get(value) === false) {
         return (
-          <Text color={isSelected ? "cyan" : undefined}>{label}</Text>
+          <ThemeText token={isSelected ? theme.accent : undefined}>{label}</ThemeText>
         );
       }
-      return <Text color={isSelected ? "cyan" : undefined}>{label}</Text>;
+      return <ThemeText token={isSelected ? theme.accent : undefined}>{label}</ThemeText>;
     }
     return Item;
   }, [availableByLabel]);
@@ -657,8 +659,8 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
 
       <Box flexDirection="column" flexShrink={0}>
       {mode === "picker" ? (
-        <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text color="cyan">Select a model (↑/↓, Enter to choose, Esc to cancel):</Text>
+        <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor={theme.accent} paddingX={1}>
+          <Text color={theme.accent}>Select a model (↑/↓, Enter to choose, Esc to cancel):</Text>
           <SelectInput
             items={items}
             itemComponent={ModelItem}
@@ -681,8 +683,8 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
           />
         </Box>
       ) : mode === "sessions" ? (
-        <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Text color="cyan">Load a session (↑/↓, Enter to load, Esc to cancel):</Text>
+        <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor={theme.accent} paddingX={1}>
+          <Text color={theme.accent}>Load a session (↑/↓, Enter to load, Esc to cancel):</Text>
           <SelectInput
             items={sessionNames.map((name) => ({ label: name, value: name, key: name }))}
             limit={12}
@@ -696,12 +698,12 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
 
       {lastError ? (
         <Box marginTop={1}>
-          <Text color="red">✖ {lastError}</Text>
+          <ThemeText token={theme.danger}>✖ {lastError}</ThemeText>
         </Box>
       ) : null}
 
       {scrollTop !== null ? (
-        <Text dimColor>── scrolled · PgDn to bottom ──</Text>
+        <ThemeText token={theme.faint}>── scrolled · PgDn to bottom ──</ThemeText>
       ) : null}
 
       <GenerationTimer active={status === "streaming"} message={statusMessage} />
@@ -709,7 +711,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       {mode === "input" ? (
         <Box flexDirection="column" marginTop={1}>
           <Box>
-            <Text color="blue">❯ </Text>
+            <ThemeText token={theme.primary}>❯ </ThemeText>
             <TextInput
               value={input}
               onChange={setInput}
@@ -725,7 +727,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
             <Box flexDirection="column" marginLeft={2}>
               {suggestions.map((s) => (
                 <Box key={s.name}>
-                  <Text color="cyan">{s.name}</Text>
+                  <ThemeText token={theme.accent}>{s.name}</ThemeText>
                   {s.desc ? <Text>  {s.desc}</Text> : null}
                 </Box>
               ))}

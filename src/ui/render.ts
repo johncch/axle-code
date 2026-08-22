@@ -1,4 +1,5 @@
 import type { ActionResult } from "@fifthrevision/axle/ui";
+import { theme } from "./theme.js";
 
 export type ActionStatus = "pending" | "running" | "complete" | "cancelled" | "error";
 
@@ -10,11 +11,11 @@ export const DOT = "●";
  * keep their own colour — a cancelled or failed step reads as neither.
  */
 export const DOT_COLOR: Record<ActionStatus, string> = {
-  pending: "blue",
-  running: "blue",
-  complete: "white",
-  cancelled: "yellow",
-  error: "red",
+  pending: theme.primary,
+  running: theme.primary,
+  complete: theme.settled,
+  cancelled: theme.warning,
+  error: theme.danger,
 };
 
 export function oneLineParams(params: Record<string, unknown>): string {

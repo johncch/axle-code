@@ -1,7 +1,9 @@
-import { Box, Text } from "ink";
+import { Box } from "ink";
 import React from "react";
 import type { ContextUsage } from "@fifthrevision/axle";
 import type { ModelEntry } from "../models.js";
+import { ThemeText } from "./ThemeText.js";
+import { theme } from "./theme.js";
 import { formatTokens } from "./render.js";
 
 export interface StatusBarProps {
@@ -21,18 +23,18 @@ export const StatusBar = React.memo(function StatusBar({ entry, context, session
 
   return (
     <Box marginTop={1} flexWrap="wrap">
-      <Text dimColor>
+      <ThemeText token={theme.faint}>
         {entry.providerLabel} · {entry.model}
-      </Text>
+      </ThemeText>
       {ctxText ? (
-        <Text dimColor>
+        <ThemeText token={theme.faint}>
           {"   "}
           {ctxText}
-        </Text>
+        </ThemeText>
       ) : null}
-      <Text dimColor>
+      <ThemeText token={theme.faint}>
         {"   "}session ↑{formatTokens(sessionUsage.in)} ↓{formatTokens(sessionUsage.out)}
-      </Text>
+      </ThemeText>
     </Box>
   );
 });

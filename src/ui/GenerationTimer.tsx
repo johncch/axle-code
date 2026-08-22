@@ -1,5 +1,8 @@
-import { Box, Text } from "ink";
+import { Box } from "ink";
 import React, { useEffect, useRef, useState } from "react";
+import { Shimmer } from "./Shimmer.js";
+import { ThemeText } from "./ThemeText.js";
+import { theme } from "./theme.js";
 
 interface GenerationTimerProps {
   /** Whether generation is currently active. */
@@ -48,14 +51,15 @@ export function GenerationTimer({ active, message }: GenerationTimerProps) {
   // marginLeft lines the row up with the prompt's text, which starts after "❯ ".
   return (
     <Box flexWrap="wrap" marginTop={1} marginLeft={2}>
-      <Text color={active ? "cyan" : undefined} dimColor={!active}>
+      <ThemeText token={active ? theme.accent : theme.faint}>
         {format(elapsed)}
-      </Text>
+      </ThemeText>
       {message ? (
-        <Text color="yellow">
-          {"   "}
-          {message}
-        </Text>
+        active ? (
+          <Shimmer text={`   ${message}`} active />
+        ) : (
+          <ThemeText token={theme.warning}>{"   "}{message}</ThemeText>
+        )
       ) : null}
     </Box>
   );

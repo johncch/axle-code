@@ -41,6 +41,12 @@ const COMPACTION_RECENT_USER_MESSAGES = 10;
 export interface AgentFactoryOptions {
   tools?: ExecutableTool[];
   system?: string;
+  /**
+   * Auto-compaction tuning, from user settings. `threshold` is the size
+   * at which compaction triggers before a turn; `target` is what the
+   * conversation shrinks toward. Omit to use the defaults.
+   */
+  compaction?: { threshold?: number; target?: number };
 }
 
 /**
@@ -55,6 +61,9 @@ export interface AgentFactoryOptions {
 export function makeAgentFactory(options: AgentFactoryOptions = {}) {
   const tools = options.tools ?? [];
   const system = options.system ?? SYSTEM_PROMPT;
+  const thresholdTokens =
+    options.compaction?.threshold ?? COMPACTION_THRESHOLD_TOKENS;
+  const targetTokens = options.compaction?.target ?? COMPACTION_TARGET_TOKENS;
   const createAgent = (entry: ModelEntry, session?: AgentSession): Agent => {
     if (!entry.provider) {
       throw new Error(`${entry.label} is unavailable — set ${entry.keyEnv}.`);
@@ -64,8 +73,8 @@ export function makeAgentFactory(options: AgentFactoryOptions = {}) {
       provider,
       model: entry.model,
       prompt: COMPACTION_PROMPT,
-      thresholdTokens: COMPACTION_THRESHOLD_TOKENS,
-      targetTokens: COMPACTION_TARGET_TOKENS,
+      thresholdTokens,
+      targetTokens,
       recentUserMessages: COMPACTION_RECENT_USER_MESSAGES,
     });
     const agent = new Agent(

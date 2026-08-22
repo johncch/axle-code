@@ -3,6 +3,7 @@ import React from "react";
 import type { ActionPart } from "@fifthrevision/axle/ui";
 import { TurnView } from "./TurnView.js";
 import { DOT, DOT_COLOR, oneLineParams, resultToText, tailLines } from "./render.js";
+import { theme } from "./theme.js";
 
 const MAX_RESULT_LINES = 10;
 
@@ -39,7 +40,7 @@ export const ActionBlock = React.memo(function ActionBlock({ part }: { part: Act
           <Text color={DOT_COLOR[status]}>{DOT}</Text>
         </Box>
         <Box flexShrink={0} marginLeft={1}>
-          <Text bold color="magenta">
+          <Text bold color={theme.tool}>
             {name}
           </Text>
         </Box>
@@ -55,7 +56,7 @@ export const ActionBlock = React.memo(function ActionBlock({ part }: { part: Act
           flexDirection="column"
           marginLeft={2}
           borderStyle="round"
-          borderColor="magenta"
+          borderColor={theme.tool}
           paddingLeft={1}
         >
           {children.map((child) => (
@@ -68,7 +69,7 @@ export const ActionBlock = React.memo(function ActionBlock({ part }: { part: Act
         <Box
           marginLeft={2}
           borderStyle="round"
-          borderColor="gray"
+          borderColor={theme.muted}
           paddingLeft={1}
           paddingRight={1}
           flexDirection="column"
@@ -80,7 +81,7 @@ export const ActionBlock = React.memo(function ActionBlock({ part }: { part: Act
           {tailLines(text, MAX_RESULT_LINES).split("\n").map((line, index) => (
             // A single space keeps blank lines from collapsing (Ink skips
             // empty text nodes), preserving the result's vertical shape.
-            <Text key={index} color={tone === "error" ? "red" : undefined} wrap="truncate-end">
+            <Text key={index} color={tone === "error" ? theme.danger : undefined} wrap="truncate-end">
               {line || " "}
             </Text>
           ))}

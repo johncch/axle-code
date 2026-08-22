@@ -3,6 +3,8 @@ import React from "react";
 import type { Turn, TurnPart } from "@fifthrevision/axle/ui";
 import { ActionBlock } from "./ActionBlock.js";
 import { Markdown } from "./Markdown.js";
+import { ThemeText } from "./ThemeText.js";
+import { theme } from "./theme.js";
 import { DOT, tailLines } from "./render.js";
 
 /**
@@ -18,13 +20,9 @@ function CompactionProgress({ summary, progress }: { summary?: string; progress?
     const filled = Math.round((pct / 100) * COMPACTION_BAR_WIDTH);
     const empty = COMPACTION_BAR_WIDTH - filled;
     const bar = `${"█".repeat(filled)}${"░".repeat(empty)}`;
-    return (
-      <Text color="yellow">
-        ⤺ {label} [{bar}] {pct}%
-      </Text>
-    );
+    return <ThemeText token={theme.warning}>⤺ {label} [{bar}] {pct}%</ThemeText>;
   }
-  return <Text color="yellow">⤺ {label}…</Text>;
+  return <ThemeText token={theme.warning}>⤺ {label}…</ThemeText>;
 }
 
 export const PartView = React.memo(function PartView({
@@ -37,17 +35,25 @@ export const PartView = React.memo(function PartView({
 }) {
   switch (part.type) {
     case "text":
+      // Dot at column 0 like every other part, with the text itself starting
+      // at column 2 (dot + space). The inner Box is what keeps wrapped lines
+      // aligned under the first character instead of running back to column 0
+      // — same trick as the user prompt row — and Markdown already wraps to
+      // `columns - 2`, which matches this inset exactly.
       return (
         <Box marginTop={1}>
-          <Markdown>{part.text}</Markdown>
+          <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+          <Box flexGrow={1}>
+            <Markdown>{part.text}</Markdown>
+          </Box>
         </Box>
       );
     case "thinking":
-      if (part.redacted) return <Text dimColor>[thinking redacted]</Text>;
+      if (part.redacted) return <ThemeText token={theme.faint}>[thinking redacted]</ThemeText>;
       return part.text ? (
         <Box flexDirection="column" marginTop={1}>
           <Box>
-            <Text color={active ? "blue" : "white"}>{DOT} </Text>
+            <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
             <Text bold dimColor>
               thinking
             </Text>
@@ -55,11 +61,11 @@ export const PartView = React.memo(function PartView({
           <Box
             marginLeft={2}
             borderStyle="round"
-            borderColor="gray"
+            borderColor={theme.muted}
             paddingLeft={1}
             paddingRight={1}
           >
-            <Text dimColor>{tailLines(part.text, 8)}</Text>
+            <ThemeText token={theme.faint}>{tailLines(part.text, 8)}</ThemeText>
           </Box>
         </Box>
       ) : null;
@@ -74,9 +80,9 @@ export const PartView = React.memo(function PartView({
         return <CompactionProgress summary={part.summary} progress={part.progress} />;
       }
       if (part.status === "error") {
-        return <Text color="red">⤺ compaction failed: {part.error}</Text>;
+        return <ThemeText token={theme.danger}>⤺ compaction failed: {part.error}</ThemeText>;
       }
-      return <Text color="yellow">⤺ context compacted{part.summary ? `: ${part.summary}` : ""}</Text>;
+      return <ThemeText token={theme.warning}>⤺ context compacted{part.summary ? `: ${part.summary}` : ""}</ThemeText>;
     default:
       return null;
   }
@@ -87,9 +93,9 @@ export const PartView = React.memo(function PartView({
 // each announce themselves with a dot.
 export function TurnHeader({ turn }: { turn: Turn }) {
   return (
-    <Text color={turn.owner === "user" ? "blue" : "green"}>
+    <ThemeText token={turn.owner === "user" ? theme.primary : theme.agent}>
       {turn.owner === "user" ? "↳ task" : "↳ sub-agent"}
-    </Text>
+    </ThemeText>
   );
 }
 
@@ -97,12 +103,12 @@ export function TurnFooter({ turn }: { turn: Turn }) {
   if (turn.owner === "user") return null;
   if (turn.status === "error") {
     return (
-      <Text color="red">
+      <ThemeText token={theme.danger}>
         {turn.error ? `[${turn.error.type} error: ${turn.error.message}]` : "[turn ended with error]"}
-      </Text>
+      </ThemeText>
     );
   }
-  if (turn.status === "cancelled") return <Text color="yellow">[cancelled]</Text>;
+  if (turn.status === "cancelled") return <ThemeText token={theme.warning}>[cancelled]</ThemeText>;
   return null;
 }
 
@@ -125,7 +131,7 @@ function TurnViewImpl({ turn, nested = false }: { turn: Turn; nested?: boolean }
       .trim();
     return (
       <Box marginTop={1}>
-        <Text color="blue">❯ </Text>
+        <ThemeText token={theme.primary}>❯ </ThemeText>
         <Box flexGrow={1}>
           <Text>{typed}</Text>
         </Box>

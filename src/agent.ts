@@ -32,8 +32,13 @@ const COMPACTION_PROMPT =
  */
 const COMPACTION_THRESHOLD_TOKENS = 100_000;
 const COMPACTION_TARGET_TOKENS = 30_000;
-/** Provider-managed web search, exposed on every agent by default. */
+/** Provider-managed web search. */
 const WEB_SEARCH_PROVIDER_TOOL: ProviderTool = { type: "provider", name: "web_search" };
+
+// OpenRouter's server-tool pipeline buffers reasoning: with a provider tool
+// attached it ships the whole chain of thought as one chunk instead of
+// streaming `thinking:delta`, so thinking only appears once it is finished.
+const WEB_SEARCH_ENABLED = false;
 
 /** Recent user messages kept verbatim after a compaction, for continuity. */
 const COMPACTION_RECENT_USER_MESSAGES = 10;
@@ -83,7 +88,7 @@ export function makeAgentFactory(options: AgentFactoryOptions = {}) {
         model: entry.model,
         system,
         tools,
-        providerTools: [WEB_SEARCH_PROVIDER_TOOL],
+        ...(WEB_SEARCH_ENABLED ? { providerTools: [WEB_SEARCH_PROVIDER_TOOL] } : {}),
       },
       session,
     );

@@ -48,9 +48,16 @@ export const PartView = React.memo(function PartView({
           </Box>
         </Box>
       );
-    case "thinking":
+    case "thinking": {
       if (part.redacted) return <ThemeText token={theme.faint}>[thinking redacted]</ThemeText>;
-      return part.text ? (
+      // Providers disagree on which field carries reasoning: some stream raw
+      // chain of thought into `text`, others only ever populate `summary`.
+      // Summary wins when both arrive — it's the readable form of the same
+      // reasoning. A part with neither still renders while the turn is live,
+      // so a slow first delta shows a box instead of nothing.
+      const body = part.summary || part.text;
+      if (!body && !active) return null;
+      return (
         <Box flexDirection="column" marginTop={1}>
           <Box>
             <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
@@ -65,10 +72,11 @@ export const PartView = React.memo(function PartView({
             paddingLeft={1}
             paddingRight={1}
           >
-            <ThemeText token={theme.faint}>{tailLines(part.text, 8)}</ThemeText>
+            <ThemeText token={theme.faint}>{body ? tailLines(body, 8) : "…"}</ThemeText>
           </Box>
         </Box>
-      ) : null;
+      );
+    }
     case "action":
       return <ActionBlock part={part} />;
     case "file":

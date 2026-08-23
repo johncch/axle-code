@@ -10,7 +10,7 @@ import {
 } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "./TextInput.js";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, AgentSession, ContextUsage } from "@fifthrevision/axle";
 import type { Turn } from "@fifthrevision/axle/ui";
 import { writeConfig } from "../config.js";
@@ -22,7 +22,9 @@ import { StatusBar } from "./StatusBar.js";
 import { theme } from "./theme.js";
 import { ThemeText } from "./ThemeText.js";
 import { TopBar } from "./TopBar.js";
-import { TurnView } from "./TurnView.js";
+import { MeasuredTurn } from "./MeasuredTurn.js";
+import { TurnHeightTable } from "./turnHeights.js";
+
 import { useAgent } from "./useAgent.js";
 
 export interface AppProps {
@@ -85,7 +87,6 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   const quittingRef = useRef(false);
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const { rows } = useWindowSize();
 
   // Real mouse reporting (button tracking + SGR coordinates). Without it the
   // terminal falls back to "alternate scroll", translating the wheel into ↑/↓
@@ -123,6 +124,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   // `scrollTop`: null = follow the bottom (normal chat mode); a number =
   // pinned, counting the content lines hidden above the viewport
   // (rendered as a negative top margin inside the clipping box).
+  const { rows, columns } = useWindowSize();
   const [filled, setFilled] = useState(() => roughLines(initialTurns) >= rows);
   const [scrollTop, setScrollTop] = useState<number | null>(null);
   const viewportRef = useRef<DOMElement>(null);
@@ -131,6 +133,50 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   // clipping window). Read by the scroll-key handlers; refreshed after every
   // commit, so it's current whenever a key can arrive.
   const sizeRef = useRef({ content: 0, viewport: 0 });
+
+  // ── Transcript virtualization ────────────────────────────────────────────
+  // Only a window of turns mounts; everything else collapses into two spacer
+  // boxes. The height table starts from predictions and is corrected to
+  // exact measureElement values as turns mount — including via overscan, so
+  // regions the user has scrolled near converge to fully-measured.
+  const tableRef = useRef<TurnHeightTable>(new TurnHeightTable());
+
+  // Exact heights arrive from MeasuredTurn after mount. Recording one bumps
+  // the tick, which re-runs window selection below so the prefix sums (and
+  // therefore the spacers) are rebuilt from the measurement rather than the
+  // prediction it replaced. Resize needs no invalidation: entries are keyed by
+  // width, so reindex re-predicts anything measured at a stale one.
+  const [measureTick, setMeasureTick] = useState(0);
+  const onMeasure = useCallback((turnId: string, width: number, height: number) => {
+    if (tableRef.current.set(turnId, width, height)) setMeasureTick((t) => t + 1);
+  }, []);
+
+  // Window selection. Follow mode picks by suffix (bottom-anchored layout is
+  // self-correcting against estimate error); pinned mode cuts [scrollTop,
+  // scrollTop + viewport) out of the prefix sums, padded by overscan on both
+  // sides. The streaming turn rides along naturally: follow mode always
+  // includes the bottom of the transcript, and pinning away from it is the
+  // user explicitly asking for it not to render.
+  const OVERSCAN_ROWS = Math.max(20, rows);
+  const window_ = useMemo(() => {
+    if (turns.length === 0) return { startIdx: 0, endIdx: 0 };
+    const table = tableRef.current;
+    table.reindex(turns, columns);
+    const total = table.totalHeight;
+
+    let startOffset: number;
+    let endOffset: number;
+    if (scrollTop === null) {
+      endOffset = total;
+      startOffset = Math.max(0, total - rows - OVERSCAN_ROWS);
+    } else {
+      startOffset = Math.max(0, scrollTop - OVERSCAN_ROWS);
+      endOffset = Math.min(total, scrollTop + rows + OVERSCAN_ROWS);
+    }
+    const startIdx = table.indexOfOffset(startOffset);
+    const endIdx = table.endIndexOfOffset(endOffset);
+    return { startIdx, endIdx };
+  }, [turns, scrollTop, rows, columns, measureTick]);
 
   const items = useMemo(
     () =>
@@ -651,9 +697,25 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
           flexShrink={0}
           marginTop={scrollTop !== null ? -scrollTop : 0}
         >
-          {turns.map((turn) => (
-            <TurnView key={turn.id} turn={turn} />
-          ))}
+          {(() => {
+            const { startIdx, endIdx } = window_;
+            const table = tableRef.current;
+            const spacerAbove = endIdx > startIdx ? table.endOffset(startIdx - 1) : 0;
+            const spacerBelow =
+              endIdx > startIdx ? Math.max(0, table.totalHeight - table.endOffset(endIdx - 1)) : 0;
+            return (
+              <>
+                {spacerAbove > 0 ? <Box flexShrink={0} height={spacerAbove} /> : null}
+                {turns.slice(startIdx, endIdx).map((turn) => (
+                  // Key includes columns: a resize remounts just the windowed
+                  // turns, so they re-measure at the new width instead of
+                  // staying memoized with stale (pre-resize) geometry.
+                  <MeasuredTurn key={`${turn.id}@${columns}`} turn={turn} onMeasure={onMeasure} />
+                ))}
+                {spacerBelow > 0 ? <Box flexShrink={0} height={spacerBelow} /> : null}
+              </>
+            );
+          })()}
         </Box>
       </Box>
 

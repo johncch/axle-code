@@ -5,9 +5,10 @@ import { ThemeText } from "./ThemeText.js";
 import { theme } from "./theme.js";
 import { DOT } from "./render.js";
 
-// Homebrew's spinner: the classic braille "dots" frame set (cli-spinners'
-// `dots`), stepped at 80ms — the same animation brew serves while downloading.
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+// cli-spinners' "dots2": the dense 8-dot braille set, stepped at 80ms —
+// fills the whole cell evenly so it reads centred next to the ▪ idle marker
+// (the classic homebrew "dots" set floats high in the cell by comparison).
+const SPINNER_FRAMES = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
 const SPINNER_MS = 80;
 
 interface GenerationTimerProps {

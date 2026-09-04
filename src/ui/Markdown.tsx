@@ -1,6 +1,7 @@
 import { Text, useStdout } from "ink";
 import React, { useMemo } from "react";
 import chalk from "chalk";
+import { highlightLine } from "./highlight.js";
 import { render as renderMarkdown, type Theme, type ThemeName } from "markdansi";
 
 // Two-tone markdown: white body text, one accent (cyan) for things worth
@@ -50,6 +51,13 @@ export const Markdown = React.memo(function Markdown({ children }: { children: s
         color: chalk.level > 0,
         theme,
         hyperlinks: false,
+        // Fenced code blocks get highlight.js colors (via cli-highlight).
+        // markdansi calls this per line and is ANSI-aware when it measures
+        // and pads the block, so colored output can't skew the layout.
+        // Fences whose language highlight.js doesn't know — and any block
+        // that throws mid-parse — fall back to the plain string, which is
+        // exactly how they render without a highlighter.
+        highlighter: (code, lang) => highlightLine(code, lang),
       })
         .replace(/^\n+/, "")
         .replace(/\n+$/, ""),

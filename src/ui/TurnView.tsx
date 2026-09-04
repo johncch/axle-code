@@ -26,6 +26,15 @@ function CompactionProgress({ summary, progress }: { summary?: string; progress?
   return <ThemeText token={theme.warning}>⤺ {label}…</ThemeText>;
 }
 
+function ThinkingHeading({ redacted }: { redacted?: boolean }) {
+  return (
+    <>
+      <Text bold>Thinking</Text>
+      {redacted ? <Text dimColor> Redacted</Text> : null}
+    </>
+  );
+}
+
 export const PartView = React.memo(function PartView({
   part,
   active = false,
@@ -43,16 +52,20 @@ export const PartView = React.memo(function PartView({
   // collapse — they *are* the transcript.
   if (display === "succinct") {
     if (part.type === "thinking") {
-      if (part.redacted) return <ThemeText token={theme.faint}>[thinking redacted]</ThemeText>;
+      if (part.redacted && !part.summary)
+        return (
+          <Box marginTop={1}>
+            <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+            <ThinkingHeading redacted />
+          </Box>
+        );
       // Match verbose: a part with neither summary nor text renders nothing
       // once settled; while live it still holds its header row as a placeholder.
       if (!part.summary && !part.text && !active) return null;
       return (
         <Box marginTop={1}>
           <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
-          <Text bold dimColor>
-            thinking
-          </Text>
+          <ThinkingHeading redacted={part.redacted} />
         </Box>
       );
     }
@@ -76,21 +89,27 @@ export const PartView = React.memo(function PartView({
         </Box>
       );
     case "thinking": {
-      if (part.redacted) return <ThemeText token={theme.faint}>[thinking redacted]</ThemeText>;
+      const body = part.summary || (!part.redacted ? part.text : "");
+      if (part.redacted && !body)
+        return (
+          <Box flexDirection="column" marginTop={1}>
+            <Box>
+              <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+              <ThinkingHeading redacted />
+            </Box>
+          </Box>
+        );
       // Providers disagree on which field carries reasoning: some stream raw
       // chain of thought into `text`, others only ever populate `summary`.
       // Summary wins when both arrive — it's the readable form of the same
       // reasoning. A part with neither still renders while the turn is live,
       // so a slow first delta shows a box instead of nothing.
-      const body = part.summary || part.text;
       if (!body && !active) return null;
       return (
         <Box flexDirection="column" marginTop={1}>
           <Box>
             <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
-            <Text bold dimColor>
-              thinking
-            </Text>
+            <ThinkingHeading redacted={part.redacted} />
           </Box>
           <Box
             marginLeft={2}

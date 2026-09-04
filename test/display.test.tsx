@@ -50,7 +50,7 @@ describe("succinct rendering", () => {
 
     const succinct = render(<TurnView turn={rich} display="succinct" />).lastFrame() ?? "";
     // Label rows survive…
-    expect(succinct).toContain("thinking");
+    expect(succinct).toContain("Thinking");
     expect(succinct).toContain("read-file");
     expect(succinct).toContain("done");
     // …but boxed detail collapses.
@@ -94,7 +94,7 @@ describe("succinct rendering", () => {
     const empty = { id: "e", type: "thinking", text: "" } as const;
     const t = agentTurn({ id: "e", parts: [empty] });
     const succinct = render(<TurnView turn={t} display="succinct" />).lastFrame() ?? "";
-    expect(succinct).not.toContain("thinking");
+    expect(succinct).not.toContain("Thinking");
   });
 
   it("regression: an over-wide markdansi line must wrap, not truncate the block", () => {
@@ -124,6 +124,27 @@ describe("succinct height estimates", () => {
     });
     expect(estimateTurnHeight(t, 80, "succinct")).toBe(2);
     expect(estimateTurnHeight(t, 80, "verbose")).toBeGreaterThan(2);
+  });
+
+  it("includes a redacted thinking summary body in the verbose height", () => {
+    const withSummary = agentTurn({
+      id: "summary-height",
+      parts: [
+        {
+          id: "p",
+          type: "thinking",
+          text: "",
+          summary: "visible provider summary",
+          redacted: true,
+        },
+      ],
+    });
+    const rawOnly = agentTurn({
+      id: "raw-height",
+      parts: [{ id: "p", type: "thinking", text: "raw private reasoning", redacted: true }],
+    });
+    expect(estimateTurnHeight(withSummary, 80, "verbose")).toBeGreaterThan(2);
+    expect(estimateTurnHeight(rawOnly, 80, "verbose")).toBe(2);
   });
 
   it("a tool action with a result predicts margin + one label row", () => {

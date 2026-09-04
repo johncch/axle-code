@@ -5,7 +5,7 @@ import { TurnView } from "./TurnView.js";
 import type { DisplayMode } from "./display.js";
 import { DOT, DOT_COLOR, oneLineParams, resultToText, tailLines } from "./render.js";
 import { ThemeText } from "./ThemeText.js";
-import { theme } from "./theme.js";
+import { resolveColor, theme } from "./theme.js";
 
 const MAX_RESULT_LINES = 10;
 
@@ -46,13 +46,13 @@ export const ActionBlock = React.memo(function ActionBlock({ part, display = "ve
           <Text color={DOT_COLOR[status]}>{DOT}</Text>
         </Box>
         <Box flexShrink={0} marginLeft={1}>
-          <Text bold color={theme.tool}>
-            {name}
-          </Text>
+          <Text color={resolveColor(theme.settled).color}>{name}</Text>
         </Box>
         {detailText ? (
           <Box flexGrow={1} flexShrink={1} marginLeft={1}>
-            <Text wrap="truncate-end">{detailText}</Text>
+            <Text color={resolveColor(theme.settled).color} dimColor wrap="truncate-end">
+              {detailText}
+            </Text>
           </Box>
         ) : null}
       </Box>

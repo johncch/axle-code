@@ -44,13 +44,13 @@ function estimatePart(part: TurnPart, textWidth: number): number {
     case "text":
       return MARGIN + wrappedLines(part.text, textWidth);
     case "thinking": {
-      // Header row + bordered body clamped by tailLines. Redacted thinking is
-      // a single faint line with no margin.
-      if (part.redacted) return MARGIN;
+      const text = part.summary || (!part.redacted ? part.text : "");
+      // Redacted thinking renders the same header row as normal thinking
+      // ("Thinking Redacted"), with no body box — margin + one row.
+      if (part.redacted && !text) return MARGIN + 1;
       // Mirrors PartView: summary wins over raw text, and a live part with
       // neither still renders a one-line placeholder box.
-      const text = part.summary || part.text || "…";
-      const body = Math.min(wrappedLines(text, textWidth - 4), THINKING_BODY_LINES);
+      const body = Math.min(wrappedLines(text || "…", textWidth - 4), THINKING_BODY_LINES);
       return MARGIN + 1 + body + BORDER_ROWS;
     }
     case "action": {

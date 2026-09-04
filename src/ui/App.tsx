@@ -53,6 +53,10 @@ const COMMANDS: { name: string; desc: string }[] = [
   { name: "/quit", desc: "quit" },
 ];
 
+/** How long a transient status message holds the timer row's message slot
+ * before flashing out. */
+const FLASH_MS = 3000;
+
 function longestCommonPrefix(values: string[]): string {
   if (values.length === 0) return "";
   let prefix = values[0];
@@ -86,7 +90,25 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   // In-memory only: purely presentational, never persisted to sessions.
   const [display, setDisplay] = useState<DisplayMode>("verbose");
   const [sessionNames, setSessionNames] = useState<string[]>([]);
-  const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
+  // Transient status message. Rendered in the prompt's placeholder and
+  // self-clearing after a few seconds — no dedicated line, so it can't
+  // push the layout around.
+  const [flash, setFlash] = useState<string | null>(initialNotice ?? null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showFlash = useCallback((text: string) => {
+    setFlash(text);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(null), FLASH_MS);
+  }, []);
+  const clearFlash = useCallback(() => {
+    setFlash(null);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+  }, []);
+  // Startup diagnostics flash out like any other message.
+  useEffect(() => {
+    if (initialNotice) showFlash(initialNotice);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [switching, setSwitching] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -342,7 +364,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     if (key.ctrl && _input === "c") {
       if (mode === "picker" || mode === "sessions" || mode === "display") {
         setMode("input");
-        setNotice(null);
+        clearFlash();
       } else if (status === "streaming") {
         cancel();
         setCancelling(true);
@@ -382,7 +404,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     if (key.escape) {
       if (mode === "picker" || mode === "sessions" || mode === "display") {
         setMode("input");
-        setNotice(null);
+        clearFlash();
       } else if (status === "streaming") {
         cancel();
         setCancelling(true);
@@ -488,15 +510,15 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
 
   async function switchModel(next: ModelEntry) {
     if (!next.available || !next.provider) {
-      setNotice(`${next.label} needs credentials — set ${next.keyEnv} and relaunch.`);
+      showFlash(`${next.label} needs credentials — set ${next.keyEnv} and relaunch.`);
       return;
     }
     if (next.id === entry.id) {
-      setNotice(`Already on ${next.label}.`);
+      showFlash(`Already on ${next.label}.`);
       return;
     }
     setSwitching(true);
-    setNotice(`Switching to ${next.label}…`);
+    showFlash(`Switching to ${next.label}…`);
     try {
       // Carry the conversation across: snapshot current session, rebuild the
       // agent on the new provider/model with that session restored. The UI's
@@ -505,11 +527,11 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       const nextAgent = createAgent(next, session);
       setAgent(nextAgent);
       setEntry(next);
-      setNotice(`Switched to ${next.label}.`);
+      showFlash(`Switched to ${next.label}.`);
       // Remember the choice so the next launch starts here.
       void writeConfig({ defaultModel: next.id });
     } catch (error) {
-      setNotice(`Switch failed: ${error instanceof Error ? error.message : String(error)}`);
+      showFlash(`Switch failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setSwitching(false);
     }
@@ -519,9 +541,9 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     try {
       const session = await agent.snapshot();
       const path = await saveSession(name, entry.id, session, turns);
-      setNotice(`Saved session to ${path}`);
+      showFlash(`Saved session to ${path}`);
     } catch (error) {
-      setNotice(`Save failed: ${error instanceof Error ? error.message : String(error)}`);
+      showFlash(`Save failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -537,19 +559,19 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       reset({ turns: savedTurns });
       setScrollTop(null);
       setFilled(roughLines(savedTurns) >= rows);
-      setNotice(`Loaded "${name}" (${loadedEntry.label}).`);
+      showFlash(`Loaded "${name}" (${loadedEntry.label}).`);
     } catch (error) {
-      setNotice(`Load failed: ${error instanceof Error ? error.message : String(error)}`);
+      showFlash(`Load failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   async function doListSessions() {
     const names = await listSessions();
-    setNotice(names.length ? `Saved sessions: ${names.join(", ")}` : "No saved sessions.");
+    showFlash(names.length ? `Saved sessions: ${names.join(", ")}` : "No saved sessions.");
   }
 
   async function doClear() {
-    setNotice(null);
+    clearFlash();
     try {
       // Cancel any in-flight turn so snapshot/archive reflects a settled state.
       if (status === "streaming") cancel();
@@ -565,9 +587,9 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       reset({ turns: [] });
       setScrollTop(null);
       setFilled(false);
-      setNotice(archiveName ? `Session archived as ${archiveName} and cleared.` : "Cleared. (Nothing to archive.)");
+      showFlash(archiveName ? `Session archived as ${archiveName} and cleared.` : "Cleared. (Nothing to archive.)");
     } catch (error) {
-      setNotice(`Clear failed: ${error instanceof Error ? error.message : String(error)}`);
+      showFlash(`Clear failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -596,65 +618,65 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
         // Steering message: stop the active turn at its next tool-call
         // boundary, then queue this message as the next turn.
         stop();
-        setNotice("Pausing at next tool call — sending your message…");
+        showFlash("Pausing at next tool call — sending your message…");
         send(trimmed);
         return;
       }
       if (trimmed === "/version") {
-        setNotice(formatVersion());
+        showFlash(formatVersion());
         return;
       }
       if (trimmed === "/display" || trimmed.startsWith("/display ")) {
         const arg = trimmed.slice("/display".length).trim();
         if (!arg) {
-          setNotice(null);
+          clearFlash();
           setMode("display");
           return;
         }
         const next = parseDisplayMode(arg);
         if (!next) {
-          setNotice(`Unknown display mode: "${arg}" · try /display verbose|succinct`);
+          showFlash(`Unknown display mode: "${arg}" · try /display verbose|succinct`);
           return;
         }
         setDisplayMode(next);
-        setNotice(next === "verbose" ? "Display: verbose." : "Display: succinct.");
+        showFlash(next === "verbose" ? "Display: verbose." : "Display: succinct.");
         return;
       }
-      setNotice(
+      showFlash(
         `Wait for the agent to finish, or send a plain message to pause and queue it. (${trimmed.split(/\s/)[0]} needs an idle conversation)`,
       );
       return;
     }
     if (trimmed === "/model") {
-      setNotice(null);
+      clearFlash();
       setMode("picker");
       return;
     }
     if (trimmed === "/display") {
-      setNotice(null);
+      clearFlash();
       setMode("display");
       return;
     }
     if (trimmed.startsWith("/display ")) {
       const next = parseDisplayMode(trimmed.slice("/display ".length));
       if (!next) {
-        setNotice(`Unknown display mode · try /display verbose|succinct`);
+        showFlash(`Unknown display mode · try /display verbose|succinct`);
         return;
       }
       setDisplayMode(next);
-      setNotice(next === "verbose" ? "Display: verbose." : "Display: succinct.");
+      showFlash(next === "verbose" ? "Display: verbose." : "Display: succinct.");
       return;
     }
     if (trimmed === "/compact" || trimmed.startsWith("/compact")) {
-      setNotice(null);
+      clearFlash();
       setCompacting(true);
       agent
         .compact()
         .then((applied) =>
-          setNotice(applied ? "Context compacted." : "Nothing to compact yet."),
+          showFlash(applied ? "Context compacted." : "Nothing to compact yet."),
         )
         .catch((error) =>
-          setNotice(`Compact failed: ${error instanceof Error ? error.message : String(error)}`),
+          showFlash(`Compact failed: ${error instanceof Error ? error.message : String(error)}`),
         )
         .finally(() => {
           setCompacting(false);
@@ -664,7 +686,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     if (trimmed.startsWith("/model ")) {
       const query = trimmed.slice("/model ".length).trim();
       const match = findEntry(catalog, query);
-      if (!match) setNotice(`No model matches "${query}".`);
+      if (!match) showFlash(`No model matches "${query}".`);
       else void switchModel(match);
       return;
     }
@@ -673,10 +695,10 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       return;
     }
     if (trimmed === "/load") {
-      setNotice(null);
+      clearFlash();
       listSessions().then((names) => {
         if (names.length === 0) {
-          setNotice("No saved sessions. Use /save <name> to create one.");
+          showFlash("No saved sessions. Use /save <name> to create one.");
         } else {
           setSessionNames(names);
           setMode("sessions");
@@ -697,31 +719,18 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       return;
     }
     if (trimmed === "/version") {
-      setNotice(formatVersion());
+      showFlash(formatVersion());
       return;
     }
     if (trimmed.startsWith("/")) {
-      setNotice(`Unknown command: ${trimmed.split(/\s/)[0]} · try /model /display /compact /save /load /clear /version /exit`);
+      showFlash(`Unknown command: ${trimmed.split(/\s/)[0]} · try /model /display /compact /save /load /clear /version /exit`);
       return;
     }
-    setNotice(null);
+    clearFlash();
     send(trimmed);
   };
 
   const busy = status === "streaming" || switching || compacting;
-
-  // The single status message shown inline with the stopwatch. The busy
-  // variants take precedence over transient notices so "Switching to X…"
-  // (a notice) doesn't fight the "…switching model (input disabled)" line.
-  const statusMessage = switching
-    ? "…switching model (input disabled)"
-    : compacting
-      ? "…compacting context (input disabled)"
-      : cancelling
-        ? "…cancelling"
-        : status === "streaming"
-          ? "working — type below to pause & steer, Esc to cancel"
-          : notice;
 
   // One fixed page (the alternate screen has no scrollback): a clipping
   // viewport over the full in-memory transcript, then the chrome docked below.
@@ -790,7 +799,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
               if (!next) return;
               if (!next.available) {
                 // Not selectable — keep the picker open and say why.
-                setNotice(`${next.label} needs credentials — set ${next.keyEnv} and relaunch.`);
+                showFlash(`${next.label} needs credentials — set ${next.keyEnv} and relaunch.`);
                 return;
               }
               setMode("input");
@@ -826,7 +835,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
               setMode("input");
               if (!next) return;
               setDisplayMode(next);
-              setNotice(next === "verbose" ? "Display: verbose." : "Display: succinct.");
+              showFlash(next === "verbose" ? "Display: verbose." : "Display: succinct.");
             }}
           />
         </Box>
@@ -844,7 +853,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
         </Box>
       ) : null}
 
-      <GenerationTimer active={status === "streaming"} message={statusMessage} />
+      <GenerationTimer active={status === "streaming"} message={flash} />
 
       {mode === "input" ? (
         <Box flexDirection="column" marginTop={1}>
@@ -854,11 +863,20 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
               value={input}
               onChange={setInput}
               onSubmit={onSubmit}
-              placeholder={
-                busy
-                  ? "Steer the agent… (sends a message, pauses at next tool call)"
-                  : "Ask me… (/model to switch, /exit to quit)"
-              }
+              // The prompt's placeholder carries the busy sub-states — switching /
+            // compacting / cancelling are "input disabled" signals, and the
+            // flash lives on the timer row's message slot instead.
+            placeholder={
+              switching
+                ? "…switching model (input disabled)"
+                : compacting
+                  ? "…compacting context (input disabled)"
+                  : cancelling
+                    ? "…cancelling"
+                    : busy
+                      ? "Steer the agent… (sends a message, pauses at next tool call)"
+                      : "Ask me… (/model to switch, /exit to quit)"
+            }
             />
           </Box>
           {suggestions.length > 0 ? (

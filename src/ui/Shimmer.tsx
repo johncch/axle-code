@@ -29,17 +29,14 @@ function paint(s: string, color: string | undefined): string {
 
 /**
  * Colour half for one character, from its position in the band. Outside the
- * band (intensity 0) text rests on the `settled` token (white by default —
- * retunable via settings), the shoulders are the `accent` palette slot, and
- * the core is accent's *bright sibling* slot. All real palette entries, so
- * every character renders through the same colour scheme as the rest of the
- * UI.
- *
- * The faint attribute is deliberately NOT applied here — see the `<Text>`
- * below, which carries `dimColor` for the whole element in one SGR.
+ * band (intensity 0) text rests on plain default foreground — matching the
+ * transcript's quiet rows — while the shoulders are the `accent` palette slot
+ * and the core is accent's *bright sibling* slot. All real palette entries,
+ * so every character renders through the same colour scheme as the rest of
+ * the UI.
  */
 function colorHalfFor(intensity: number): string | undefined {
-  if (intensity <= 0) return resolveColor(theme.settled).color;
+  if (intensity <= 0) return undefined;
   const token = intensity < 0.5 ? theme.accent : brightVariant(theme.accent);
   return resolveColor(token).color;
 }
@@ -48,8 +45,8 @@ function colorHalfFor(intensity: number): string | undefined {
  * A sweeping highlight that cycles across `text` while `active`, then freezes
  * into the resting colour when idle.
  *
- * Look: the entire element is faint (`dimColor`) — white-dim at rest, with a
- * dimmed accent band whose core tips into accent's bright sibling. One styled
+ * Look: default foreground at rest, with a full-strength accent band whose
+ * core tips into accent's bright sibling sweeping across it. One styled
  * string per frame (not one <Text> per character): Ink only rewrites the lines
  * that changed between frames, so a single animated line costs one cheap line
  * repaint per tick. When colour is unavailable (pipe, CI, NO_COLOR —
@@ -85,7 +82,7 @@ export function Shimmer({ text, active }: { text: string; active: boolean }) {
       .join("");
   }, [text, active, tick]);
 
-  // dimColor paints the faint attribute over the whole element once, so every
-  // character — rest, shoulder, and core — reads as one muted shimmer.
-  return <Text dimColor>{styled}</Text>;
+  // Rest characters carry no SGR at all (plain foreground); only band
+  // characters are painted, so the sweep stays full-strength.
+  return <Text>{styled}</Text>;
 }

@@ -1,5 +1,6 @@
 import type { Turn, TurnPart } from "@fifthrevision/axle/ui";
 import stringWidth from "string-width";
+import type { DisplayMode } from "./display.js";
 
 /**
  * Predicted rendered height (in terminal rows) of a Turn — used to seed the
@@ -82,7 +83,7 @@ function estimatePart(part: TurnPart, textWidth: number): number {
   }
 }
 
-export function estimateTurnHeight(turn: Turn, columns: number): number {
+export function estimateTurnHeight(turn: Turn, columns: number, display: DisplayMode = "verbose"): number {
   // User turns: one margin + prompt rows wrapping at columns − 2.
   if (turn.owner === "user") {
     const typed = turn.parts
@@ -90,6 +91,27 @@ export function estimateTurnHeight(turn: Turn, columns: number): number {
       .join("")
       .trim();
     return MARGIN + Math.max(1, wrappedLines(typed, columns - INSET));
+  }
+  if (display === "succinct") {
+    // Mirrors the succinct renderers: one margin + one label row per part.
+    // Agent text can still wrap; thinking headers, action label rows, file /
+    // citation / compaction lines are all single rows. Sub-agent children
+    // collapse to one `↳ N sub-steps` row per parent. This should be exact,
+    // not just a prior — but keep the ≥1 floor like verbose.
+    let total = 0;
+    for (const part of turn.parts) {
+      if (part.type === "text") {
+        total += MARGIN + wrappedLines(part.text, columns - INSET);
+      } else if (part.type === "action" && part.kind === "agent") {
+        const children = part.detail.children;
+        total += MARGIN + 1 + (children && children.length > 0 ? MARGIN + 1 : 0);
+      } else {
+        total += MARGIN + 1;
+      }
+    }
+    const footer =
+      turn.status === "error" || turn.status === "cancelled" ? MARGIN + 1 : 0;
+    return Math.max(1, total + footer);
   }
   let total = 0;
   for (const part of turn.parts) total += estimatePart(part, columns - INSET);
@@ -105,19 +127,31 @@ export function estimateTurnHeight(turn: Turn, columns: number): number {
  * measurements as turns mount (see MeasuredTurn); measurements win for the
  * width they were taken at, so a resize silently falls back to predictions
  * until the remounted turns re-measure.
+ *
+ * Display mode is part of the key for the same reason width is: toggling
+ * /display changes every turn's true height, so verbose measurements must
+ * never be reused under succinct (and vice versa). Entries measured under a
+ * different mode are re-predicted in reindex — the succinct prediction is
+ * near-exact, so the first frame after a toggle is already anchored.
  */
 export class TurnHeightTable {
   private heights = new Map<string, number>();
   private widths = new Map<string, number>();
+  private modes = new Map<string, DisplayMode>();
   private sums: number[] = [];
   private total = 0;
 
   /** Record a height. Returns true when the stored value changed. */
-  set(turnId: string, width: number, height: number): boolean {
-    if ((this.widths.get(turnId) === width) && this.heights.get(turnId) === height) {
+  set(turnId: string, width: number, height: number, display: DisplayMode = "verbose"): boolean {
+    if (
+      this.widths.get(turnId) === width &&
+      this.modes.get(turnId) === display &&
+      this.heights.get(turnId) === height
+    ) {
       return false;
     }
     this.widths.set(turnId, width);
+    this.modes.set(turnId, display);
     this.heights.set(turnId, height);
     return true;
   }
@@ -129,18 +163,20 @@ export class TurnHeightTable {
   /**
    * Rebuild prefix sums from the ordered turn list. Cheap enough to run per
    * commit (n = turn count, not lines). Entries measured at a different width
-   * are re-predicted here, so a resize needs no separate invalidation step.
+   * or under a different display mode are re-predicted here, so a resize or a
+   * /display toggle needs no separate invalidation step.
    */
-  reindex(turns: Turn[], columns: number): void {
+  reindex(turns: Turn[], columns: number, display: DisplayMode = "verbose"): void {
     this.sums = new Array(turns.length);
     let acc = 0;
     for (let i = 0; i < turns.length; i++) {
       const id = turns[i].id;
       let h = this.heights.get(id);
-      if (h === undefined || this.widths.get(id) !== columns) {
-        h = estimateTurnHeight(turns[i], columns);
+      if (h === undefined || this.widths.get(id) !== columns || this.modes.get(id) !== display) {
+        h = estimateTurnHeight(turns[i], columns, display);
         this.heights.set(id, h);
         this.widths.set(id, columns);
+        this.modes.set(id, display);
       }
       acc += h;
       this.sums[i] = acc;

@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import React from "react";
 import type { Turn, TurnPart } from "@fifthrevision/axle/ui";
 import { ActionBlock } from "./ActionBlock.js";
+import type { DisplayMode } from "./display.js";
 import { Markdown } from "./Markdown.js";
 import { ThemeText } from "./ThemeText.js";
 import { theme } from "./theme.js";
@@ -28,11 +29,37 @@ function CompactionProgress({ summary, progress }: { summary?: string; progress?
 export const PartView = React.memo(function PartView({
   part,
   active = false,
+  display = "verbose",
 }: {
   part: TurnPart;
   /** The live tail of a streaming turn — drives the dot's blue/white. */
   active?: boolean;
+  /** Succinct collapses every boxed detail into its one-line label row. */
+  display?: DisplayMode;
 }) {
+  // Succinct mode is the activity log: thinking keeps its header row, actions
+  // keep their one-line label row (rendered by ActionBlock), and everything
+  // else renders as it does in verbose. User text and agent text never
+  // collapse — they *are* the transcript.
+  if (display === "succinct") {
+    if (part.type === "thinking") {
+      if (part.redacted) return <ThemeText token={theme.faint}>[thinking redacted]</ThemeText>;
+      // Match verbose: a part with neither summary nor text renders nothing
+      // once settled; while live it still holds its header row as a placeholder.
+      if (!part.summary && !part.text && !active) return null;
+      return (
+        <Box marginTop={1}>
+          <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+          <Text bold dimColor>
+            thinking
+          </Text>
+        </Box>
+      );
+    }
+    if (part.type === "action") {
+      return <ActionBlock part={part} display={display} />;
+    }
+  }
   switch (part.type) {
     case "text":
       // Dot at column 0 like every other part, with the text itself starting
@@ -122,13 +149,9 @@ export function TurnFooter({ turn }: { turn: Turn }) {
 
 // `TurnView` is memoized: a finished turn's `turn` object is referentially
 // stable (the accumulator doesn't mutate it after turn:end), so it skips
-// re-rendering on every streaming delta of the *active* turn.
-//
-// Turns render in full — no streaming clamps. Keeping the live region within
-// the terminal viewport is the transcript flusher's job (see transcript.tsx):
-// finalized parts and completed lines of the in-flight text part move to
-// <Static> incrementally, so only the actively-changing tail renders live.
-function TurnViewImpl({ turn, nested = false }: { turn: Turn; nested?: boolean }) {
+// re-rendering on every streaming delta of the *active* turn. `display` is a
+// prop (not context) precisely so toggling it busts the memo.
+function TurnViewImpl({ turn, nested = false, display = "verbose" }: { turn: Turn; nested?: boolean; display?: DisplayMode }) {
   // A user turn is its text, behind the same caret the prompt uses. The inner
   // Box is what makes wrapped lines align under the first character instead of
   // running back to column 0.
@@ -160,6 +183,7 @@ function TurnViewImpl({ turn, nested = false }: { turn: Turn; nested?: boolean }
             key={part.id}
             part={part}
             active={turn.status === "streaming" && index === lastIndex}
+            display={display}
           />
         ))}
         <TurnFooter turn={turn} />

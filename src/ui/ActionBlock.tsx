@@ -2,7 +2,9 @@ import { Box, Text } from "ink";
 import React from "react";
 import type { ActionPart } from "@fifthrevision/axle/ui";
 import { TurnView } from "./TurnView.js";
+import type { DisplayMode } from "./display.js";
 import { DOT, DOT_COLOR, oneLineParams, resultToText, tailLines } from "./render.js";
+import { ThemeText } from "./ThemeText.js";
 import { theme } from "./theme.js";
 
 const MAX_RESULT_LINES = 10;
@@ -23,11 +25,15 @@ function actionLabel(part: ActionPart): { name: string; detailText: string } {
   }
 }
 
-export const ActionBlock = React.memo(function ActionBlock({ part }: { part: ActionPart }) {
+export const ActionBlock = React.memo(function ActionBlock({ part, display = "verbose" }: { part: ActionPart; display?: DisplayMode }) {
   const status = part.status;
   const { name, detailText } = actionLabel(part);
   const { text, tone } = resultToText(part.detail.result);
   const children = part.kind === "agent" ? part.detail.children : undefined;
+  // Succinct keeps only the one-line label row: sub-agent children collapse
+  // to a count line and result boxes collapse entirely. The status-coloured
+  // dot still reads as the log line.
+  const succinct = display === "succinct";
 
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -51,7 +57,7 @@ export const ActionBlock = React.memo(function ActionBlock({ part }: { part: Act
         ) : null}
       </Box>
 
-      {children && children.length > 0 ? (
+      {children && children.length > 0 && !succinct ? (
         <Box
           flexDirection="column"
           marginLeft={2}
@@ -65,7 +71,15 @@ export const ActionBlock = React.memo(function ActionBlock({ part }: { part: Act
         </Box>
       ) : null}
 
-      {text ? (
+      {children && children.length > 0 && succinct ? (
+        <Box marginLeft={2}>
+          <ThemeText token={theme.faint}>
+            ↳ {children.length} sub-step{children.length === 1 ? "" : "s"}
+          </ThemeText>
+        </Box>
+      ) : null}
+
+      {text && !succinct ? (
         <Box
           marginLeft={2}
           borderStyle="round"

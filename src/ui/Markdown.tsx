@@ -56,8 +56,13 @@ export const Markdown = React.memo(function Markdown({ children }: { children: s
     [children, width, theme],
   );
   // The output already carries ANSI styles and is pre-wrapped to the terminal
-  // width — Ink's wrap= would re-wrap (and miscount ANSI sequences), so opt
-  // out and print the lines as-is. The leading/trailing newlines markdansi
-  // emits become the paragraph spacing between parts.
-  return <Text wrap="truncate-end">{rendered}</Text>;
+  // width — Ink must not truncate it. markdansi can overshoot the requested
+  // width by a character on lines with unstyled-replaced spans (e.g. inline
+  // code, which it renders without ANSI codes), and a single over-wide line
+  // under wrap="truncate-end" collapses the *whole block* to one line: Ink
+  // only applies textWrap when widestLine > maxWidth, and truncate-end keeps
+  // just the first line plus an ellipsis. wrap="wrap" is the safe fallback —
+  // normally a no-op (content already fits), and a genuine re-wrap of the odd
+  // over-wide line otherwise.
+  return <Text wrap="wrap">{rendered}</Text>;
 });

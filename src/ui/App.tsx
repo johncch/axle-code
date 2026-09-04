@@ -22,6 +22,7 @@ import { StatusBar } from "./StatusBar.js";
 import { theme } from "./theme.js";
 import { ThemeText } from "./ThemeText.js";
 import { TopBar } from "./TopBar.js";
+import { DISPLAY_MODES, parseDisplayMode, type DisplayMode } from "./display.js";
 import { MeasuredTurn } from "./MeasuredTurn.js";
 import { TurnHeightTable } from "./turnHeights.js";
 
@@ -41,6 +42,7 @@ export interface AppProps {
 
 const COMMANDS: { name: string; desc: string }[] = [
   { name: "/model", desc: "switch model (picker, or /model <substr>)" },
+  { name: "/display", desc: "transcript detail (picker, or /display verbose|succinct)" },
   { name: "/compact", desc: "summarize + shrink the conversation" },
   { name: "/save", desc: "save the session [name]" },
   { name: "/load", desc: "restore a saved session [name]" },
@@ -80,7 +82,9 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   const { turns, status, lastError, send, stop, cancel, reset, applyEvent } =
     useAgent(agent, { turns: initialTurns });
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<"input" | "picker" | "sessions">("input");
+  const [mode, setMode] = useState<"input" | "picker" | "sessions" | "display">("input");
+  // In-memory only: purely presentational, never persisted to sessions.
+  const [display, setDisplay] = useState<DisplayMode>("verbose");
   const [sessionNames, setSessionNames] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [switching, setSwitching] = useState(false);
@@ -147,10 +151,11 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   // the tick, which re-runs window selection below so the prefix sums (and
   // therefore the spacers) are rebuilt from the measurement rather than the
   // prediction it replaced. Resize needs no invalidation: entries are keyed by
-  // width, so reindex re-predicts anything measured at a stale one.
+  // width, so reindex re-predicts anything measured at a stale one. Same for
+  // /display toggles, which are keyed by mode.
   const [measureTick, setMeasureTick] = useState(0);
-  const onMeasure = useCallback((turnId: string, width: number, height: number) => {
-    if (tableRef.current.set(turnId, width, height)) setMeasureTick((t) => t + 1);
+  const onMeasure = useCallback((turnId: string, width: number, height: number, measuredDisplay: DisplayMode) => {
+    if (tableRef.current.set(turnId, width, height, measuredDisplay)) setMeasureTick((t) => t + 1);
   }, []);
 
   // Window selection. Follow mode picks by suffix (bottom-anchored layout is
@@ -163,7 +168,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   const window_ = useMemo(() => {
     if (turns.length === 0) return { startIdx: 0, endIdx: 0 };
     const table = tableRef.current;
-    table.reindex(turns, columns);
+    table.reindex(turns, columns, display);
     const total = table.totalHeight;
 
     let startOffset: number;
@@ -178,7 +183,16 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     const startIdx = table.indexOfOffset(startOffset);
     const endIdx = table.endIndexOfOffset(endOffset);
     return { startIdx, endIdx };
-  }, [turns, scrollTop, rows, columns, measureTick]);
+  }, [turns, scrollTop, rows, columns, display, measureTick]);
+
+  // Toggling /display shrinks or grows the whole transcript's height at once,
+  // so a pinned scrollTop may point past the end. Resume following — the user
+  // asked for a new overview, not to keep a stale pin.
+  const setDisplayMode = (next: DisplayMode) => {
+    if (next === display) return;
+    setDisplay(next);
+    setScrollTop(null);
+  };
 
   const items = useMemo(
     () =>
@@ -241,6 +255,13 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       return sessionNames
         .filter((n) => n.toLowerCase().includes(arg))
         .map((n) => ({ name: n, desc: "" }));
+    }
+
+    if (cmd === "/display") {
+      return DISPLAY_MODES.filter((m) => m.startsWith(arg)).map((m) => ({
+        name: m,
+        desc: m === "verbose" ? "full transcript" : "activity log",
+      }));
     }
 
     return [];
@@ -319,7 +340,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     // Ink uses with exitOnCtrlC:false) this arrives as a key event, not SIGINT,
     // so it doesn't conflict with the process signal handler.
     if (key.ctrl && _input === "c") {
-      if (mode === "picker" || mode === "sessions") {
+      if (mode === "picker" || mode === "sessions" || mode === "display") {
         setMode("input");
         setNotice(null);
       } else if (status === "streaming") {
@@ -359,7 +380,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     // resume follow-mode, which made "Esc to follow" an invitation to kill the
     // turn by accident. PgDn returns to the bottom instead.
     if (key.escape) {
-      if (mode === "picker" || mode === "sessions") {
+      if (mode === "picker" || mode === "sessions" || mode === "display") {
         setMode("input");
         setNotice(null);
       } else if (status === "streaming") {
@@ -583,6 +604,22 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
         setNotice(formatVersion());
         return;
       }
+      if (trimmed === "/display" || trimmed.startsWith("/display ")) {
+        const arg = trimmed.slice("/display".length).trim();
+        if (!arg) {
+          setNotice(null);
+          setMode("display");
+          return;
+        }
+        const next = parseDisplayMode(arg);
+        if (!next) {
+          setNotice(`Unknown display mode: "${arg}" · try /display verbose|succinct`);
+          return;
+        }
+        setDisplayMode(next);
+        setNotice(next === "verbose" ? "Display: verbose." : "Display: succinct.");
+        return;
+      }
       setNotice(
         `Wait for the agent to finish, or send a plain message to pause and queue it. (${trimmed.split(/\s/)[0]} needs an idle conversation)`,
       );
@@ -591,6 +628,21 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     if (trimmed === "/model") {
       setNotice(null);
       setMode("picker");
+      return;
+    }
+    if (trimmed === "/display") {
+      setNotice(null);
+      setMode("display");
+      return;
+    }
+    if (trimmed.startsWith("/display ")) {
+      const next = parseDisplayMode(trimmed.slice("/display ".length));
+      if (!next) {
+        setNotice(`Unknown display mode · try /display verbose|succinct`);
+        return;
+      }
+      setDisplayMode(next);
+      setNotice(next === "verbose" ? "Display: verbose." : "Display: succinct.");
       return;
     }
     if (trimmed === "/compact" || trimmed.startsWith("/compact")) {
@@ -649,7 +701,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       return;
     }
     if (trimmed.startsWith("/")) {
-      setNotice(`Unknown command: ${trimmed.split(/\s/)[0]} · try /model /compact /save /load /clear /version /exit`);
+      setNotice(`Unknown command: ${trimmed.split(/\s/)[0]} · try /model /display /compact /save /load /clear /version /exit`);
       return;
     }
     setNotice(null);
@@ -709,10 +761,10 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
               <>
                 {spacerAbove > 0 ? <Box flexShrink={0} height={spacerAbove} /> : null}
                 {turns.slice(startIdx, endIdx).map((turn) => (
-                  // Key includes columns: a resize remounts just the windowed
-                  // turns, so they re-measure at the new width instead of
-                  // staying memoized with stale (pre-resize) geometry.
-                  <MeasuredTurn key={`${turn.id}@${columns}`} turn={turn} onMeasure={onMeasure} />
+                  // Key includes columns and display mode: either one remounts
+                  // just the windowed turns, so they re-measure instead of
+                  // staying memoized with stale geometry.
+                  <MeasuredTurn key={`${turn.id}@${columns}:${display}`} turn={turn} display={display} onMeasure={onMeasure} />
                 ))}
                 {spacerBelow > 0 ? <Box flexShrink={0} height={spacerBelow} /> : null}
               </>
@@ -755,6 +807,26 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
             onSelect={(item) => {
               setMode("input");
               void doLoad(item.value);
+            }}
+          />
+        </Box>
+      ) : mode === "display" ? (
+        <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor={theme.accent} paddingX={1}>
+          <Text color={theme.accent}>Transcript detail (↑/↓, Enter to choose, Esc to cancel):</Text>
+          <SelectInput
+            items={DISPLAY_MODES.map((m) => ({
+              label: `${m}${m === display ? "  (current)" : ""}`,
+              value: m,
+              key: m,
+            }))}
+            limit={12}
+            initialIndex={Math.max(0, DISPLAY_MODES.indexOf(display))}
+            onSelect={(item) => {
+              const next = parseDisplayMode(item.value);
+              setMode("input");
+              if (!next) return;
+              setDisplayMode(next);
+              setNotice(next === "verbose" ? "Display: verbose." : "Display: succinct.");
             }}
           />
         </Box>
@@ -803,7 +875,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
         </Box>
       ) : null}
 
-      <StatusBar entry={entry} context={context} sessionUsage={sessionUsage} />
+      <StatusBar entry={entry} context={context} sessionUsage={sessionUsage} display={display} />
       </Box>
     </Box>
   );

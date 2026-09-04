@@ -1,6 +1,7 @@
 import { Box, measureElement, type DOMElement } from "ink";
 import React, { useEffect, useRef } from "react";
 import type { Turn } from "@fifthrevision/axle/ui";
+import type { DisplayMode } from "./display.js";
 import { TurnView } from "./TurnView.js";
 
 /**
@@ -15,9 +16,9 @@ const INTER_TURN_GAP = 1;
  *
  * Wraps a top-level TurnView in a plain column Box and hands `measureElement`'s
  * exact row count to the caller, which owns the height table. Measured values
- * win over the predictor until the terminal is resized — the caller keys this
- * component on the column count, so a resize remounts it and it re-measures at
- * the new width.
+ * win over the predictor for the width *and display mode* they were taken
+ * at — the caller keys this component on both, so a resize or a /display
+ * toggle remounts it and it re-measures instead of reusing a stale value.
  *
  * Reporting is gated on turn status: a finished turn is immutable, so its
  * measurement is reported once and never again. A streaming turn's height
@@ -28,10 +29,12 @@ const INTER_TURN_GAP = 1;
  */
 export const MeasuredTurn = React.memo(function MeasuredTurn({
   turn,
+  display = "verbose",
   onMeasure,
 }: {
   turn: Turn;
-  onMeasure: (turnId: string, width: number, height: number) => void;
+  display?: DisplayMode;
+  onMeasure: (turnId: string, width: number, height: number, display: DisplayMode) => void;
 }) {
   const ref = useRef<DOMElement>(null);
   const settled = turn.status !== "streaming";
@@ -39,12 +42,12 @@ export const MeasuredTurn = React.memo(function MeasuredTurn({
   useEffect(() => {
     if (!ref.current || !settled) return;
     const { width, height } = measureElement(ref.current);
-    onMeasure(turn.id, width, height + INTER_TURN_GAP);
-  }, [turn, settled, onMeasure]);
+    onMeasure(turn.id, width, height + INTER_TURN_GAP, display);
+  }, [turn, settled, display, onMeasure]);
 
   return (
     <Box ref={ref} flexDirection="column" flexShrink={0}>
-      <TurnView turn={turn} />
+      <TurnView turn={turn} display={display} />
     </Box>
   );
 });

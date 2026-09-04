@@ -839,7 +839,9 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       ) : null}
 
       {scrollTop !== null ? (
-        <ThemeText token={theme.faint}>── scrolled · PgDn to bottom ──</ThemeText>
+        <Box alignSelf="center">
+          <ThemeText token={theme.faint}>── scrolled · PgDn to bottom ──</ThemeText>
+        </Box>
       ) : null}
 
       <GenerationTimer active={status === "streaming"} message={statusMessage} />

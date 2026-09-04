@@ -43,7 +43,10 @@ export const ActionBlock = React.memo(function ActionBlock({ part, display = "ve
           is the first thing flex drops when the row overflows. */}
       <Box flexWrap="nowrap">
         <Box flexShrink={0}>
-          <Text color={DOT_COLOR[status]}>{DOT}</Text>
+          {/* Landed steps dim (the turn's final text keeps its bright dot in
+            TurnView); pending/running stay bright as the live marker, and
+            cancelled/error stay bright because they're the alarm. */}
+        <Text color={DOT_COLOR[status]} dimColor={status === "complete"}>{DOT}</Text>
         </Box>
         <Box flexShrink={0} marginLeft={1}>
           <Text color={resolveColor(theme.settled).color}>{name}</Text>
@@ -60,8 +63,10 @@ export const ActionBlock = React.memo(function ActionBlock({ part, display = "ve
       {children && children.length > 0 && !succinct ? (
         <Box
           flexDirection="column"
-          marginLeft={2}
           borderStyle="round"
+          borderTop={false}
+          borderBottom={false}
+          borderRight={false}
           borderColor={theme.tool}
           paddingLeft={1}
         >
@@ -81,12 +86,13 @@ export const ActionBlock = React.memo(function ActionBlock({ part, display = "ve
 
       {text && !succinct ? (
         <Box
-          marginLeft={2}
+          flexDirection="column"
           borderStyle="round"
+          borderTop={false}
+          borderBottom={false}
+          borderRight={false}
           borderColor={theme.muted}
           paddingLeft={1}
-          paddingRight={1}
-          flexDirection="column"
         >
           {/* Render one line per <Text> so `truncate-end` clips each line to
               the box's available width instead of collapsing the whole result

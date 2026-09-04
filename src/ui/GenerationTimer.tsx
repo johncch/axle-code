@@ -3,6 +3,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { Shimmer } from "./Shimmer.js";
 import { ThemeText } from "./ThemeText.js";
 import { theme } from "./theme.js";
+import { DOT } from "./render.js";
+
+// Homebrew's spinner: the classic braille "dots" frame set (cli-spinners'
+// `dots`), stepped at 80ms — the same animation brew serves while downloading.
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_MS = 80;
 
 interface GenerationTimerProps {
   /** Whether generation is currently active. */
@@ -17,19 +23,31 @@ function format(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+/** Idle label for the last generation's elapsed time: `Idle (32s)`, rolling
+ * over to minutes only once the seconds would grow past two digits. */
+function formatIdle(seconds: number): string {
+  const s = Math.floor(seconds);
+  if (s < 60) return `Idle (${s}s)`;
+  return `Idle (${Math.floor(s / 60)}m${s % 60}s)`;
+}
+
 /**
- * A stopwatch that starts the moment generation becomes active and freezes
- * (showing the final elapsed time) once it completes. Resets to 0:00 on the
- * next generation.
+ * While generation is active: Homebrew's braille spinner + a stopwatch that
+ * starts the moment generation begins. When it completes, the row reverts to
+ * a quiet `▪ Idle (Ns)` marker showing the final elapsed time — the last
+ * generation's duration stays readable until the next one resets it. A 0s
+ * value (fresh start, resumed session, instant cancel) earns no marker.
  */
 export function GenerationTimer({ active, message }: GenerationTimerProps) {
   const [elapsed, setElapsed] = useState(0);
+  const [frame, setFrame] = useState(0);
   const startRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (active && startRef.current === null) {
       startRef.current = Date.now();
       setElapsed(0);
+      setFrame(0);
     } else if (!active && startRef.current !== null) {
       // Freeze at the final elapsed value; clear the start ref so the next
       // activation resets from zero.
@@ -40,20 +58,35 @@ export function GenerationTimer({ active, message }: GenerationTimerProps) {
 
   useEffect(() => {
     if (!active) return;
-    const id = setInterval(() => {
+    const tick = setInterval(() => {
       if (startRef.current !== null) {
         setElapsed((Date.now() - startRef.current) / 1000);
       }
     }, 100);
-    return () => clearInterval(id);
+    const spin = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), SPINNER_MS);
+    return () => {
+      clearInterval(tick);
+      clearInterval(spin);
+    };
   }, [active]);
 
-  // marginLeft lines the row up with the prompt's text, which starts after "❯ ".
+  // Fresh session (or resumed with no generation yet): nothing to time and
+  // nothing to say — no row at all, so no stray gap above the prompt.
+  if (!active && Math.floor(elapsed) < 1 && !message) return null;
+
+  // No indent: the spinner/square sits at column 0, aligned with the ❯
+  // prompt and the transcript's markers.
   return (
-    <Box flexWrap="wrap" marginTop={1} marginLeft={2}>
-      <ThemeText token={active ? theme.accent : theme.faint}>
-        {format(elapsed)}
-      </ThemeText>
+    <Box flexWrap="wrap" marginTop={1}>
+      {active ? (
+        <ThemeText token={theme.accent}>
+          {SPINNER_FRAMES[frame]} {format(elapsed)}
+        </ThemeText>
+      ) : Math.floor(elapsed) >= 1 ? (
+        <ThemeText token={theme.faint}>
+          {DOT} {formatIdle(elapsed)}
+        </ThemeText>
+      ) : null}
       {message ? (
         active ? (
           <Shimmer text={`   ${message}`} active />

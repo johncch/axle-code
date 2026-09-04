@@ -4,7 +4,7 @@ import { theme } from "./theme.js";
 export type ActionStatus = "pending" | "running" | "complete" | "cancelled" | "error";
 
 /** The one marker every step renders with: thinking, tools, sub-agents. */
-export const DOT = "●";
+export const DOT = "▪";
 
 /**
  * Blue while a step is live, white once it has landed. The two failure states

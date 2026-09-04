@@ -35,14 +35,30 @@ function ThinkingHeading({ redacted }: { redacted?: boolean }) {
   );
 }
 
+// The part dot: bright while its part is live, and bright on the turn's
+// final text part (the answer); every other landed dot dims, so a finished
+// transcript reads as a quiet column of dots with one highlight on the
+// message. The faint attribute composes with the dot's colour.
+function PartDot({ active, final }: { active?: boolean; final?: boolean }) {
+  return (
+    <Text color={active ? theme.primary : theme.settled} dimColor={!(active || final)}>
+      {DOT}{" "}
+    </Text>
+  );
+}
+
 export const PartView = React.memo(function PartView({
   part,
   active = false,
+  final = false,
   display = "verbose",
 }: {
   part: TurnPart;
   /** The live tail of a streaming turn — drives the dot's blue/white. */
   active?: boolean;
+  /** The turn's final text part: its dot stays bright while every other
+   * landed dot dims, so the transcript's one highlight marks the answer. */
+  final?: boolean;
   /** Succinct collapses every boxed detail into its one-line label row. */
   display?: DisplayMode;
 }) {
@@ -55,7 +71,7 @@ export const PartView = React.memo(function PartView({
       if (part.redacted && !part.summary)
         return (
           <Box marginTop={1}>
-            <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+            <PartDot active={active} />
             <ThinkingHeading redacted />
           </Box>
         );
@@ -64,7 +80,7 @@ export const PartView = React.memo(function PartView({
       if (!part.summary && !part.text && !active) return null;
       return (
         <Box marginTop={1}>
-          <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+          <PartDot active={active} />
           <ThinkingHeading redacted={part.redacted} />
         </Box>
       );
@@ -82,7 +98,7 @@ export const PartView = React.memo(function PartView({
       // `columns - 2`, which matches this inset exactly.
       return (
         <Box marginTop={1}>
-          <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+          <PartDot active={active} final={final} />
           <Box flexGrow={1}>
             <Markdown>{part.text}</Markdown>
           </Box>
@@ -94,7 +110,7 @@ export const PartView = React.memo(function PartView({
         return (
           <Box flexDirection="column" marginTop={1}>
             <Box>
-              <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+              <PartDot active={active} />
               <ThinkingHeading redacted />
             </Box>
           </Box>
@@ -108,15 +124,19 @@ export const PartView = React.memo(function PartView({
       return (
         <Box flexDirection="column" marginTop={1}>
           <Box>
-            <Text color={active ? theme.primary : theme.settled}>{DOT} </Text>
+            <PartDot active={active} />
             <ThinkingHeading redacted={part.redacted} />
           </Box>
+          {/* The rule hangs at column 0 so it lines up with the part square;
+              paddingLeft 1 puts the body one space in — same column as the
+              label text above, so `│ text` mirrors `▪ text`. */}
           <Box
-            marginLeft={2}
             borderStyle="round"
+            borderTop={false}
+            borderBottom={false}
+            borderRight={false}
             borderColor={theme.muted}
             paddingLeft={1}
-            paddingRight={1}
           >
             <ThemeText token={theme.faint}>{body ? tailLines(body, 8) : "…"}</ThemeText>
           </Box>
@@ -171,9 +191,10 @@ export function TurnFooter({ turn }: { turn: Turn }) {
 // re-rendering on every streaming delta of the *active* turn. `display` is a
 // prop (not context) precisely so toggling it busts the memo.
 function TurnViewImpl({ turn, nested = false, display = "verbose" }: { turn: Turn; nested?: boolean; display?: DisplayMode }) {
-  // A user turn is its text, behind the same caret the prompt uses. The inner
-  // Box is what makes wrapped lines align under the first character instead of
-  // running back to column 0.
+  // A user turn is its text, behind the prompt's caret glyph — rendered in
+  // plain foreground here so recorded rows read as quiet history; the live
+  // prompt keeps the accent colour. The inner Box is what makes wrapped lines
+  // align under the first character instead of running back to column 0.
   if (turn.owner === "user" && !nested) {
     const typed = turn.parts
       .map((part) => (part.type === "text" ? part.text : ""))
@@ -181,7 +202,7 @@ function TurnViewImpl({ turn, nested = false, display = "verbose" }: { turn: Tur
       .trim();
     return (
       <Box marginTop={1}>
-        <ThemeText token={theme.primary}>❯ </ThemeText>
+        <Text>❯ </Text>
         <Box flexGrow={1}>
           <Text>{typed}</Text>
         </Box>
@@ -202,6 +223,12 @@ function TurnViewImpl({ turn, nested = false, display = "verbose" }: { turn: Tur
             key={part.id}
             part={part}
             active={turn.status === "streaming" && index === lastIndex}
+            final={
+              turn.owner === "agent" &&
+              turn.status !== "streaming" &&
+              index === lastIndex &&
+              part.type === "text"
+            }
             display={display}
           />
         ))}

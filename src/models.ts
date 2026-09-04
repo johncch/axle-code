@@ -1,10 +1,7 @@
 import { anthropic, chatCompletions, gemini, openai } from "@fifthrevision/axle";
 import type { AIProvider } from "@fifthrevision/axle";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { cwd } from "node:process";
+import { loadConfig, type AxleConfig } from "./config.js";
 import { loadEnv } from "./env.js";
-import { AXLE_HOME } from "./config.js";
 
 export interface ModelEntry {
   /** Stable unique id, e.g. "anthropic/claude-sonnet-5". */
@@ -91,38 +88,33 @@ const DEFAULT_MODELS: string[] = [
   "moonshotai/kimi-k3",
 ];
 
-/** Candidate model list files, in precedence order (first found wins). */
-const MODELS_PATHS = [
-  resolve(cwd(), ".axle", "models.json"), // project-local
-  resolve(AXLE_HOME, "models.json"), // global user-level
-];
-
 /**
- * Load the model list from the first existing `.axle/models.json` — either in
- * the current project directory or globally at `~/.axle/models.json`. Falls
- * back to {@link DEFAULT_MODELS} when neither file exists.
+ * Load the model list from the unified config's `models` key —
+ * `~/.axle/code.yaml` merged with the project-local `.axle/code.yaml`. Falls
+ * back to {@link DEFAULT_MODELS} when no list is configured or the value is
+ * unusable, reporting why so the caller can surface it at startup instead of
+ * leaving the user on a silently different list. (Legacy `models.json` files
+ * are still picked up — config loading folds them in.)
  */
-function loadModelSlugs(): string[] {
-  const path = MODELS_PATHS.find((p) => existsSync(p));
-  if (!path) return DEFAULT_MODELS;
-  try {
-    const raw = JSON.parse(readFileSync(path, "utf-8"));
-    if (!Array.isArray(raw) || !raw.every((m) => typeof m === "string")) {
-      throw new Error("expected a JSON array of strings");
-    }
-    if (raw.length === 0) throw new Error("array is empty");
-    return raw;
-  } catch (err) {
-    throw new Error(
-      `Failed to parse ${path}: ${err instanceof Error ? err.message : err}. ` +
-        `Expected a JSON array of model spec strings, e.g. ["anthropic/claude-sonnet-5", "openai/gpt-5.4", "z-ai/glm-5.2"].`,
-    );
+function loadModelSlugs(config: AxleConfig): { slugs: string[]; warnings: string[] } {
+  if (config.models === undefined) {
+    return {
+      slugs: DEFAULT_MODELS,
+      warnings: ["No models list configured — using the built-in model list."],
+    };
   }
+  return { slugs: config.models, warnings: [] };
 }
 
 // ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
+
+export interface Catalog {
+  entries: ModelEntry[];
+  /** Non-fatal config problems, for the caller to surface at startup. */
+  warnings: string[];
+}
 
 /**
  * Build the full model catalog. Every model's provider key is checked; those
@@ -130,9 +122,9 @@ function loadModelSlugs(): string[] {
  * the UI can show them grayed out. One provider instance is shared across
  * models from the same provider.
  */
-export function buildCatalog(): ModelEntry[] {
+export function buildCatalog(config?: AxleConfig): Catalog {
   loadEnv();
-  const slugs = loadModelSlugs();
+  const { slugs, warnings } = loadModelSlugs(config ?? loadConfig());
 
   // Cache one AIProvider instance per provider label.
   const providerCache = new Map<string, AIProvider | undefined>();
@@ -161,27 +153,45 @@ export function buildCatalog(): ModelEntry[] {
         "OPENROUTER_API_KEY in axle-code/.env or ~/.axle/credentials.",
     );
   }
-  return entries;
+  return { entries, warnings };
+}
+
+/** Match a model reference against an entry's id or bare model name. */
+function matchAvailable(available: ModelEntry[], ref: string): ModelEntry | undefined {
+  return available.find((e) => e.model === ref || e.id === ref || e.id.endsWith("/" + ref));
 }
 
 /**
  * Pick the starting model, in precedence order:
  *   1. AXLE_CODE_MODEL env var  — one-off override
- *   2. savedModelId             — the last model persisted to ~/.axle/config.json
+ *   2. savedModelId             — the last model persisted to ~/.axle/code.yaml
  *   3. an Anthropic model, else the first available entry
+ *
+ * A reference that resolves to nothing falls through to the next rule and is
+ * reported, so a stale saved id doesn't quietly land you on a different model.
  */
-export function defaultEntry(catalog: ModelEntry[], savedModelId?: string): ModelEntry {
+export function defaultEntry(
+  catalog: ModelEntry[],
+  savedModelId?: string,
+): { entry: ModelEntry; warnings: string[] } {
   const available = catalog.filter((e) => e.available);
+  const warnings: string[] = [];
+
   const preferred = process.env.AXLE_CODE_MODEL;
   if (preferred) {
-    const match = available.find((e) => e.model === preferred || e.id === preferred || e.id.endsWith("/" + preferred));
-    if (match) return match;
+    const match = matchAvailable(available, preferred);
+    if (match) return { entry: match, warnings };
+    warnings.push(`AXLE_CODE_MODEL="${preferred}" matches no available model.`);
   }
   if (savedModelId) {
-    const match = available.find((e) => e.id === savedModelId);
-    if (match) return match;
+    const match = matchAvailable(available, savedModelId);
+    if (match) return { entry: match, warnings };
+    warnings.push(`Saved model "${savedModelId}" is no longer in the catalog.`);
   }
-  return available.find((e) => e.providerLabel === "anthropic") ?? available[0];
+
+  const entry = available.find((e) => e.providerLabel === "anthropic") ?? available[0];
+  if (warnings.length) warnings.push(`Started on ${entry.label}.`);
+  return { entry, warnings };
 }
 
 /** Find an entry by case-insensitive substring against its id/model/label. */

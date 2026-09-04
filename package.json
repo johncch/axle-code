@@ -24,6 +24,7 @@
     "markdansi": "^0.3.3",
     "react": "^19.2.8",
     "string-width": "^8.2.2",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

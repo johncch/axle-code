@@ -35,6 +35,8 @@ export interface AppProps {
   initialSession?: AgentSession;
   /** Restored transcript turns, if any. Seeds the UI on mount. */
   initialTurns?: Turn[];
+  /** Startup config diagnostics, shown in the status line until dismissed. */
+  initialNotice?: string;
 }
 
 const COMMANDS: { name: string; desc: string }[] = [
@@ -72,7 +74,7 @@ function roughLines(turns: Turn[] | undefined): number {
   return n;
 }
 
-export function App({ catalog, initialEntry, createAgent, initialSession, initialTurns }: AppProps) {
+export function App({ catalog, initialEntry, createAgent, initialSession, initialTurns, initialNotice }: AppProps) {
   const [agent, setAgent] = useState<Agent>(() => createAgent(initialEntry, initialSession));
   const [entry, setEntry] = useState<ModelEntry>(initialEntry);
   const { turns, status, lastError, send, stop, cancel, reset, applyEvent } =
@@ -80,7 +82,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<"input" | "picker" | "sessions">("input");
   const [sessionNames, setSessionNames] = useState<string[]>([]);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [switching, setSwitching] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [cancelling, setCancelling] = useState(false);

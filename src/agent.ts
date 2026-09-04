@@ -104,8 +104,8 @@ export function makeAgentFactory(options: AgentFactoryOptions = {}) {
 
 /** Convenience for non-interactive scripts: default entry + a ready agent. */
 export function buildAgent(options: AgentFactoryOptions = {}) {
-  const catalog = buildCatalog();
-  const entry = defaultEntry(catalog);
+  const { entries: catalog } = buildCatalog();
+  const { entry } = defaultEntry(catalog);
   const createAgent = makeAgentFactory(options);
   return {
     agent: createAgent(entry),

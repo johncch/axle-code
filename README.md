@@ -27,42 +27,52 @@ Then `axle-code` from any project. Because it links the working tree, edits to
 `src/` take effect on the next launch — no rebuild. Undo with
 `pnpm uninstall --global axle-code`.
 
-## Configuration (`~/.axle/`)
+## Configuration
 
-For use outside this repo, put a global credentials + config there:
+One file, `code.yaml`, read from two layers:
 
-- **`~/.axle/credentials`** — provider keys in `.env` syntax:
-  ```
-  ANTHROPIC_API_KEY=...
-  OPENAI_API_KEY=...
-  GEMINI_API_KEY=...
-  OPENROUTER_API_KEY=...
-  ```
-  Any one of these enables the matching models.
-- **`~/.axle/models.json`** or **`.axle/models.json`** — optional JSON array of
-  model spec strings to override the built-in model list. The local
-  `.axle/models.json` (relative to CWD) takes precedence over the global
-  `~/.axle/models.json`. See [Models](#models) below.
-- **`~/.axle/config.json`** — preferences; currently `{ "defaultModel": "…" }`.
-  The TUI writes this whenever you switch models, so the next launch resumes on
-  your last model.
-- **`.axle/settings.json`** or **`~/.axle/settings.json`** — hand-edited user
-  settings, layered (local `.axle/` wins on conflicts, global fills the rest).
-  Currently supports `theme` token overrides and auto-compaction tuning:
-  ```json
-  {
-    "theme": { "accent": "green", "faint": "gray:dim" },
-    "compaction": { "threshold": 100000, "target": 30000 }
-  }
-  ```
-  `thresholdTokens` is the estimated context size at which auto-compaction
-  triggers before a turn; `targetTokens` is what it shrinks toward. Omit a
-  block (or an individual key) to keep the defaults. A broken file or a bad
-  value is ignored — never blocks launch.
+- **`~/.axle/code.yaml`** — global (user-level)
+- **`.axle/code.yaml`** — project-local, relative to where you run `axle-code`
 
-Key precedence (first found wins): a local `axle-code/.env`, then
-`~/.axle/credentials`. Start model precedence: `AXLE_CODE_MODEL` env → saved
-`defaultModel` → an Anthropic model.
+The project file wins per top-level key; `theme` and `compaction` deep-merge,
+so a project can re-theme one token while keeping global customisations.
+
+```yaml
+# Which model to start on (also written when you switch models in the TUI).
+defaultModel: anthropic/claude-sonnet-5
+
+# Replace the built-in model list.
+models:
+  - anthropic/claude-sonnet-5
+  - z-ai/glm-5.2
+
+# Theme token overrides.
+theme:
+  accent: green
+  faint: gray:dim
+
+# Auto-compaction tuning: `threshold` is the estimated context size (in
+# tokens) at which compaction triggers before a turn; `target` is the size
+# the conversation shrinks toward.
+compaction:
+  threshold: 100000
+  target: 30000
+```
+
+Omit any key to keep the default. A broken file or a bad value is reported on
+stderr and ignored — it never blocks launch.
+
+**Credentials** stay in their own files — see below. Provider keys come from,
+in precedence order: a local `axle-code/.env`, then `~/.axle/credentials`
+(`.env` syntax: `ANTHROPIC_API_KEY=…`, `OPENAI_API_KEY=…`,
+`GEMINI_API_KEY=…`, `OPENROUTER_API_KEY=…` — any one enables its models).
+
+**Migrating from the old files:** YAML is a superset of JSON, and the previous
+`code.json` / `settings.json` / `models.json` trio is still honored per layer
+whenever that layer has no `code.yaml`, so existing setups keep working. The
+first model switch rewrites the global layer as `code.yaml` for you. Start
+model precedence: `AXLE_CODE_MODEL` env → saved `defaultModel` → an Anthropic
+model.
 
 ## Using the TUI
 
@@ -92,21 +102,20 @@ schemas and turn-level error surfacing).
 ## Models
 
 The model catalog is a flat list of spec strings. By default a built-in list
-is used; you can override it by creating a `models.json` file in either:
+is used; you can override it with the `models` key in either config layer:
 
-- **`.axle/models.json`** — project-local (relative to where you run `axle-code`)
-- **`~/.axle/models.json`** — global
+- **`.axle/code.yaml`** — project-local (relative to where you run `axle-code`)
+- **`~/.axle/code.yaml`** — global
 
-The local file takes precedence if both exist.
+The project list wins if both set `models`.
 
-```json
-[
-  "anthropic/claude-sonnet-5",
-  "openai/gpt-5.4",
-  "gemini/gemini-3.5-flash",
-  "z-ai/glm-5.2",
-  "deepseek/deepseek-v4-pro"
-]
+```yaml
+models:
+  - anthropic/claude-sonnet-5
+  - openai/gpt-5.4
+  - gemini/gemini-3.5-flash
+  - z-ai/glm-5.2
+  - deepseek/deepseek-v4-pro
 ```
 
 Each entry is either `"<provider>/<model-name>"` or just `"<model-name>"`:
@@ -141,7 +150,7 @@ Key files:
 
 | File | Role |
 |------|------|
-| `src/env.ts`, `src/config.ts`, `src/models.ts` | key/credentials loading, `~/.axle/` prefs, the model catalog |
+| `src/env.ts`, `src/config.ts`, `src/models.ts` | key/credentials loading, `code.yaml` config layers, the model catalog |
 | `bin/axle-code.mjs` | global launcher (runs the TUI against the current dir) |
 | `src/agent.ts` | agent factory (system prompt, tools, `PromptCompactor` auto-compaction) |
 | `src/session.ts` | `/save` + `/load` via `agent.snapshot()` |

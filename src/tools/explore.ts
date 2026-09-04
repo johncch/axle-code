@@ -8,7 +8,7 @@ import { readFileTool } from "./read-file.js";
 
 let cachedEntry: ModelEntry | undefined;
 function childEntry(): ModelEntry {
-  if (!cachedEntry) cachedEntry = defaultEntry(buildCatalog());
+  if (!cachedEntry) cachedEntry = defaultEntry(buildCatalog().entries).entry;
   return cachedEntry;
 }
 

@@ -4,7 +4,7 @@ import type { ContextUsage } from "@fifthrevision/axle";
 import type { ModelEntry } from "../models.js";
 import type { DisplayMode } from "./display.js";
 import { ThemeText } from "./ThemeText.js";
-import { theme } from "./theme.js";
+import { theme, useTheme } from "./theme.js";
 import { formatTokens } from "./render.js";
 
 export interface StatusBarProps {
@@ -15,6 +15,7 @@ export interface StatusBarProps {
 }
 
 export const StatusBar = React.memo(function StatusBar({ entry, context, sessionUsage, display = "verbose" }: StatusBarProps) {
+  useTheme();
   const ctxText = context
     ? context.limit
       ? `ctx ${formatTokens(context.total)}/${formatTokens(context.limit)} (${Math.round(

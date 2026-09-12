@@ -45,13 +45,14 @@ export interface AxleConfig {
   theme?: Record<string, unknown>;
   /**
    * Auto-compaction tuning. `threshold` is the estimated context size (in
-   * tokens) at which compaction triggers before a turn; `target` is the size
-   * the conversation shrinks toward. Omit to keep defaults.
+   * tokens) at which compaction triggers before a turn. Omit to keep the
+   * default. The pre-0.31 `target` key is obsolete — compaction sizes itself
+   * from the threshold now — and is reported and ignored.
    */
-  compaction?: { threshold?: number; target?: number };
+  compaction?: { threshold?: number };
 }
 
-const CONFIG_HEADER = [
+export const CONFIG_HEADER = [
   "# axle-code configuration.",
   "# Loaded from ~/.axle/code.yaml and .axle/code.yaml (project-local wins).",
   "# Keys: defaultModel, models, theme, compaction — see the README.",
@@ -121,19 +122,22 @@ function sanitize(raw: unknown, source: string, problems: string[]): AxleConfig 
   if (compaction !== undefined) {
     if (typeof compaction === "object" && compaction !== null && !Array.isArray(compaction)) {
       const block = compaction as Record<string, unknown>;
-      const tuned: { threshold?: number; target?: number } = {};
-      for (const key of ["threshold", "target"] as const) {
-        const value = block[key];
-        if (value === undefined) continue;
+      const tuned: { threshold?: number } = {};
+      const value = block.threshold;
+      if (value !== undefined) {
         if (typeof value === "number" && Number.isFinite(value)) {
-          tuned[key] = value;
+          tuned.threshold = value;
         } else {
-          problems.push(`${source}: 'compaction.${key}' must be a finite number — ignoring it`);
+          problems.push(`${source}: 'compaction.threshold' must be a finite number — ignoring it`);
         }
       }
-      if (tuned.threshold !== undefined || tuned.target !== undefined) out.compaction = tuned;
+      if (tuned.threshold !== undefined) out.compaction = tuned;
+      // Removed in Axle 0.31 — compaction sizes itself from the threshold.
+      if (block.target !== undefined) {
+        problems.push(`${source}: 'compaction.target' is no longer used (Axle 0.31 removed it; sizes derive from 'threshold') — ignoring it`);
+      }
     } else {
-      problems.push(`${source}: 'compaction' must be a mapping with numeric 'threshold'/'target' — ignoring it`);
+      problems.push(`${source}: 'compaction' must be a mapping with a numeric 'threshold' — ignoring it`);
     }
   }
 

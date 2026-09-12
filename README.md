@@ -52,15 +52,23 @@ theme:
   faint: gray:dim
 
 # Auto-compaction tuning: `threshold` is the estimated context size (in
-# tokens) at which compaction triggers before a turn; `target` is the size
-# the conversation shrinks toward.
+# tokens) at which compaction triggers before a turn. The compactor sizes
+# itself from it: summaries target ~1000 words, and recent user messages are
+# kept up to a fixed token budget. (The pre-0.31 `target` key is ignored.)
 compaction:
   threshold: 100000
-  target: 30000
 ```
 
 Omit any key to keep the default. A broken file or a bad value is reported on
 stderr and ignored — it never blocks launch.
+
+**Editing from inside the TUI:** `/settings` lists both layers; picking one
+opens it in `$EDITOR` (or `VISUAL`, falling back to `vi`). A missing file is
+seeded with the header comment before the editor launches. On a successful
+save, axle-code restarts itself (the launcher relaunches it; the conversation
+resumes from the autosave) so every key — `theme`, `defaultModel`, `models`,
+`compaction` — takes effect immediately. Editing is blocked while a turn is
+running.
 
 **Credentials** stay in their own files — see below. Provider keys come from,
 in precedence order: a local `axle-code/.env`, then `~/.axle/credentials`
@@ -89,6 +97,8 @@ matches, else to the shared prefix).
 | `/save [name]` | save the session to `.axle-code-sessions/` |
 | `/load [name]` | restore a saved session (model + scrollback + history) |
 | `/sessions` | list saved sessions |
+| `/settings` | edit a settings file (`~/.axle/code.yaml` or `.axle/code.yaml`) in `$EDITOR` — saving restarts with the new settings applied |
+| `/restart` | restart axle-code (settings reapplied, conversation resumed); blocked while a turn is running |
 | `/index` | demo a host annotation lifecycle (running → complete) |
 | `/exit`, `/quit` | quit |
 | `Esc` | cancel the in-flight turn (or close the picker) |

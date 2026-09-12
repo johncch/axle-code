@@ -61,11 +61,23 @@ describe("loadConfig", () => {
       "code.yaml",
       "theme:\n  accent: green\n  faint: gray:dim\ncompaction:\n  threshold: 100000\n  target: 30000\n",
     );
-    await put(project, "code.yaml", "theme:\n  accent: magenta\ncompaction:\n  target: 5000\n");
+    await put(project, "code.yaml", "theme:\n  accent: magenta\ncompaction:\n  threshold: 90000\n");
     expect(load()).toEqual({
       theme: { accent: "magenta", faint: "gray:dim" },
-      compaction: { threshold: 100_000, target: 5_000 },
+      compaction: { threshold: 90_000 },
     });
+  });
+
+  it("ignores the removed compaction.target key", async () => {
+    await put(home, "code.yaml", "compaction:\n  threshold: 100000\n  target: 30000\n");
+    expect(load()).toEqual({ compaction: { threshold: 100_000 } });
+    await put(project, "code.yaml", "compaction:\n  target: 5000\n");
+    expect(load()).toEqual({ compaction: { threshold: 100_000 } }); // nothing added
+  });
+
+  it("treats a compaction block with only the removed key as empty", async () => {
+    await put(home, "code.yaml", "compaction:\n  target: 30000\n");
+    expect(load()).toEqual({});
   });
 
   it("treats an empty file as absent, not an error", async () => {

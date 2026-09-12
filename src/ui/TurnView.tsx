@@ -5,7 +5,7 @@ import { ActionBlock } from "./ActionBlock.js";
 import type { DisplayMode } from "./display.js";
 import { Markdown } from "./Markdown.js";
 import { ThemeText } from "./ThemeText.js";
-import { theme } from "./theme.js";
+import { theme, useTheme } from "./theme.js";
 import { DOT, tailLines } from "./render.js";
 
 /**
@@ -62,6 +62,8 @@ export const PartView = React.memo(function PartView({
   /** Succinct collapses every boxed detail into its one-line label row. */
   display?: DisplayMode;
 }) {
+  // Re-render on live theme changes — memo'd otherwise.
+  useTheme();
   // Succinct mode is the activity log: thinking keeps its header row, actions
   // keep their one-line label row (rendered by ActionBlock), and everything
   // else renders as it does in verbose. User text and agent text never
@@ -191,6 +193,8 @@ export function TurnFooter({ turn }: { turn: Turn }) {
 // re-rendering on every streaming delta of the *active* turn. `display` is a
 // prop (not context) precisely so toggling it busts the memo.
 function TurnViewImpl({ turn, nested = false, display = "verbose" }: { turn: Turn; nested?: boolean; display?: DisplayMode }) {
+  // Re-render on live theme changes — memo'd otherwise.
+  useTheme();
   // A user turn is its text, behind the prompt's caret glyph — rendered in
   // plain foreground here so recorded rows read as quiet history; the live
   // prompt keeps the accent colour. The inner Box is what makes wrapped lines

@@ -13,13 +13,15 @@ import TextInput from "./TextInput.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, AgentSession, ContextUsage } from "@fifthrevision/axle";
 import type { Turn } from "@fifthrevision/axle/ui";
-import { writeConfig } from "../config.js";
+import { loadConfig, writeConfig } from "../config.js";
+import { editFile, seedConfig, settingsTargets, type SettingsTarget } from "../editor.js";
 import { findEntry, type ModelEntry } from "../models.js";
 import { AUTOSAVE_NAME, listSessions, loadSession, rotateCurrentSession, saveSession } from "../session.js";
+import { RESTART_SENTINEL } from "../restart.js";
 import { formatVersion } from "../version.js";
 import { GenerationTimer } from "./GenerationTimer.js";
 import { StatusBar } from "./StatusBar.js";
-import { theme } from "./theme.js";
+import { applyThemeOverrides, theme, useTheme } from "./theme.js";
 import { ThemeText } from "./ThemeText.js";
 import { TopBar } from "./TopBar.js";
 import { DISPLAY_MODES, parseDisplayMode, type DisplayMode } from "./display.js";
@@ -47,6 +49,8 @@ const COMMANDS: { name: string; desc: string }[] = [
   { name: "/save", desc: "save the session [name]" },
   { name: "/load", desc: "restore a saved session [name]" },
   { name: "/sessions", desc: "list saved sessions" },
+  { name: "/settings", desc: "edit a settings file in $EDITOR (user or project)" },
+  { name: "/restart", desc: "restart axle-code — applies settings, resumes the session" },
   { name: "/clear", desc: "archive current session and start fresh" },
   { name: "/version", desc: "show build sha + date" },
   { name: "/exit", desc: "quit" },
@@ -81,12 +85,15 @@ function roughLines(turns: Turn[] | undefined): number {
 }
 
 export function App({ catalog, initialEntry, createAgent, initialSession, initialTurns, initialNotice }: AppProps) {
+  // Live theme reloads (/settings → $EDITOR) bump the theme store; re-render
+  // so direct `theme.x` reads here (borders, picker headers) recolor.
+  useTheme();
   const [agent, setAgent] = useState<Agent>(() => createAgent(initialEntry, initialSession));
   const [entry, setEntry] = useState<ModelEntry>(initialEntry);
   const { turns, status, lastError, send, stop, cancel, reset, applyEvent } =
     useAgent(agent, { turns: initialTurns });
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<"input" | "picker" | "sessions" | "display">("input");
+  const [mode, setMode] = useState<"input" | "picker" | "sessions" | "display" | "settings">("input");
   // In-memory only: purely presentational, never persisted to sessions.
   const [display, setDisplay] = useState<DisplayMode>("verbose");
   const [sessionNames, setSessionNames] = useState<string[]>([]);
@@ -113,7 +120,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   const [compacting, setCompacting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const quittingRef = useRef(false);
-  const { exit } = useApp();
+  const { exit, suspendTerminal } = useApp();
   const { stdout } = useStdout();
 
   // Real mouse reporting (button tracking + SGR coordinates). Without it the
@@ -129,9 +136,17 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   // the user's shell receives mouse escape codes on every scroll — so the
   // teardown is also wired to process exit, which `forceQuit`'s process.exit()
   // still runs.
+  //
+  // `disableMouse`/`enableMouse` are also bracketed around editor suspensions:
+  // vim doesn't enable mouse tracking, so reports left on would arrive there
+  // as garbage keystrokes (Ink's suspendTerminal doesn't know about these
+  // sequences — they're ours).
+  const mouseRef = useRef<{ enable: () => void; disable: () => void } | null>(null);
   useEffect(() => {
     const disable = () => stdout.write("\x1b[?1006l\x1b[?1000l");
-    stdout.write("\x1b[?1000h\x1b[?1006h");
+    const enable = () => stdout.write("\x1b[?1000h\x1b[?1006h");
+    mouseRef.current = { enable, disable };
+    enable();
     process.on("exit", disable);
     return () => {
       process.off("exit", disable);
@@ -229,6 +244,18 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   const availableByLabel = useMemo(
     () => new Map(catalog.map((e) => [e.id, e.available])),
     [catalog],
+  );
+
+  // /settings picker rows — stable across renders so SelectInput keeps its
+  // selection while the picker is open.
+  const settingsItems = useMemo(
+    () =>
+      settingsTargets().map((t) => ({
+        label: t.label,
+        value: t.path,
+        key: t.path,
+      })),
+    [],
   );
 
   // Custom picker row: unavailable models render gray and dim. Stable across
@@ -362,7 +389,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     // Ink uses with exitOnCtrlC:false) this arrives as a key event, not SIGINT,
     // so it doesn't conflict with the process signal handler.
     if (key.ctrl && _input === "c") {
-      if (mode === "picker" || mode === "sessions" || mode === "display") {
+      if (mode === "picker" || mode === "sessions" || mode === "display" || mode === "settings") {
         setMode("input");
         clearFlash();
       } else if (status === "streaming") {
@@ -402,7 +429,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     // resume follow-mode, which made "Esc to follow" an invitation to kill the
     // turn by accident. PgDn returns to the bottom instead.
     if (key.escape) {
-      if (mode === "picker" || mode === "sessions" || mode === "display") {
+      if (mode === "picker" || mode === "sessions" || mode === "display" || mode === "settings") {
         setMode("input");
         clearFlash();
       } else if (status === "streaming") {
@@ -471,7 +498,10 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
   // Snapshot the session to the autosave slot, then exit. Shared by /exit,
   // /quit, and the SIGINT/SIGTERM handlers so the conversation always resumes
   // on next launch. A second signal bypasses the snapshot and force-quits.
-  async function quit() {
+  //
+  // `intent` "restart" exits with a sentinel value that index.tsx maps to the
+  // bin supervisor's restart exit code — same autosave, different handoff.
+  async function quit(intent: "quit" | "restart" = "quit") {
     if (quittingRef.current) return;
     quittingRef.current = true;
     try {
@@ -486,7 +516,7 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
     } catch {
       // Snapshot failure shouldn't trap the user — exit anyway.
     }
-    exit();
+    exit(intent === "restart" ? RESTART_SENTINEL : undefined);
   }
   const forceQuit = () => process.exit(0);
 
@@ -722,13 +752,60 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
       showFlash(formatVersion());
       return;
     }
+    if (trimmed === "/settings") {
+      clearFlash();
+      setMode("settings");
+      return;
+    }
+    if (trimmed === "/restart") {
+      clearFlash();
+      void quit("restart");
+      return;
+    }
     if (trimmed.startsWith("/")) {
-      showFlash(`Unknown command: ${trimmed.split(/\s/)[0]} · try /model /display /compact /save /load /clear /version /exit`);
+      showFlash(`Unknown command: ${trimmed.split(/\s/)[0]} · try /model /display /compact /save /load /settings /clear /version /exit`);
       return;
     }
     clearFlash();
     send(trimmed);
   };
+
+  /**
+   * Hand the terminal to an external editor over the given config layer.
+   *
+   * `suspendTerminal` (Ink) exits the alternate screen, drops raw mode and the
+   * kitty protocol, and restores + fully redraws on return — even if the
+   * callback throws. Around it we toggle our own mouse tracking: vim doesn't
+   * enable mouse reporting, so a report emitted mid-edit would land in vim's
+   * input as garbage keystrokes.
+   *
+   * Terminal setting is read fresh on return. For now that means theme tokens
+   * only (live-applied); defaultModel/models/compaction still need a restart —
+   * the flash says so.
+   */
+  async function doEditSettings(target: SettingsTarget) {
+    await seedConfig(target.path).catch(() => false);
+    mouseRef.current?.disable();
+    let failed = false;
+    let editor = "";
+    try {
+      await suspendTerminal(async () => {
+        const result = await editFile(target);
+        failed = result.failed;
+        editor = result.editor;
+      });
+    } finally {
+      mouseRef.current?.enable();
+    }
+    if (failed) {
+      showFlash(`${editor} exited non-zero — ${target.path} probably unchanged.`);
+      return;
+    }
+    // Settings are read at startup, so a successful edit restarts into them
+    // (the bin supervisor respawns; the conversation resumes from autosave).
+    // A failing editor leaves the app untouched.
+    await quit("restart");
+  }
 
   const busy = status === "streaming" || switching || compacting;
 
@@ -836,6 +913,19 @@ export function App({ catalog, initialEntry, createAgent, initialSession, initia
               if (!next) return;
               setDisplayMode(next);
               showFlash(next === "verbose" ? "Display: verbose." : "Display: succinct.");
+            }}
+          />
+        </Box>
+      ) : mode === "settings" ? (
+        <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor={theme.accent} paddingX={1}>
+          <Text color={theme.accent}>Edit a settings file (↑/↓, Enter to edit, Esc to cancel):</Text>
+          <SelectInput
+            items={settingsItems}
+            limit={12}
+            onSelect={(item) => {
+              const target = settingsTargets().find((t) => t.path === item.value);
+              setMode("input");
+              if (target) void doEditSettings(target);
             }}
           />
         </Box>

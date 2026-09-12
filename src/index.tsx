@@ -2,6 +2,7 @@ import { render } from "ink";
 import React from "react";
 import { makeAgentFactory } from "./agent.js";
 import { loadConfig } from "./config.js";
+import { isRestartRequest, RESTART_EXIT_CODE } from "./restart.js";
 import { buildCatalog, defaultEntry, findEntry } from "./models.js";
 import { AUTOSAVE_NAME, loadSession, type SavedSessionFile } from "./session.js";
 import { codingTools } from "./tools/index.js";
@@ -33,7 +34,12 @@ try {
 
 const startEntry = resume ? (findEntry(catalog, resume.modelId) ?? initialEntry) : initialEntry;
 
-render(
+// Run the TUI to completion. The App exits with a sentinel value when the
+// user asked for a restart (/restart, or apply-after-edit) — Ink routes
+// `exit(value)` through to `waitUntilExit()`. Restart = quit with intent:
+// the autosave was already written by the App's quit path, so a fresh boot
+// picks the conversation back up unchanged.
+const { waitUntilExit } = render(
   <App
     catalog={catalog}
     initialEntry={startEntry}
@@ -58,3 +64,10 @@ render(
     kittyKeyboard: { mode: "enabled", flags: ["disambiguateEscapeCodes"] },
   },
 );
+
+const exitValue: unknown = await waitUntilExit();
+if (isRestartRequest(exitValue)) {
+  // The bin supervisor (bin/axle-code.mjs) sees this code and respawns; a
+  // bare `tsx src/index.tsx` launch just exits 75 instead.
+  process.exit(RESTART_EXIT_CODE);
+}

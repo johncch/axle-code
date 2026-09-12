@@ -1,6 +1,7 @@
+import { useSyncExternalStore } from "react";
+
 /**
  * Semantic colour tokens for the whole TUI. Components reference these instead
- * of hardcoding colour literals, so the look is retunable from one place.
  *
  * HOW COLOURS RESOLVE: every token here holds a *palette name*, not an RGB
  * value. Ink turns `"cyan"` into the SGR sequence `ESC[36m`, which means
@@ -66,6 +67,29 @@ export const theme: ThemeTokens = {
   faint: "dim",
 };
 
+/**
+ * Monotonic counter bumped whenever `theme` mutates. Subscribe via
+ * `useSyncExternalStore` (see `useTheme` below); reading the value in a
+ * component body makes it re-render — and re-read the singleton — whenever
+ * overrides are re-applied (e.g. live theme reload after /settings).
+ */
+let themeVersion = 0;
+const themeListeners = new Set<() => void>();
+
+function notifyThemeChanged(): void {
+  themeVersion++;
+  for (const listener of themeListeners) listener();
+}
+
+function subscribeTheme(listener: () => void): () => void {
+  themeListeners.add(listener);
+  return () => themeListeners.delete(listener);
+}
+
+function themeSnapshot(): number {
+  return themeVersion;
+}
+
 /** Token names a settings file may override. */
 export type ThemeTokenName = keyof ThemeTokens;
 
@@ -125,6 +149,11 @@ export function resolveColor(token: ColorToken | undefined): ResolvedColor {
   return { color: token.slice(0, sep) || undefined, dim: token.slice(sep + 1) === "dim" };
 }
 
+/** True whenever the live theme singleton has been mutated since mount. */
+export function useTheme(): void {
+  useSyncExternalStore(subscribeTheme, themeSnapshot, themeSnapshot);
+}
+
 /**
  * The bright sibling of a colour half — "cyan" → "cyanBright", hex/rgb pass
  * through untouched. Bright slots are a *different palette entry*, not a
@@ -181,5 +210,6 @@ export function applyThemeOverrides(
     theme[key as ThemeTokenName] = normalized;
   }
   for (const w of warnings) warn(w);
+  if (Object.keys(overrides).length > 0) notifyThemeChanged();
   return warnings;
 }

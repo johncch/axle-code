@@ -9,14 +9,24 @@ export const DOT = "▪";
 /**
  * Blue while a step is live, white once it has landed. The two failure states
  * keep their own colour — a cancelled or failed step reads as neither.
+ *
+ * A function (not a frozen map): theme tokens can be re-applied live via
+ * /settings, so capturing `theme.primary` into a module-level object at import
+ * time would freeze startup defaults forever.
  */
-export const DOT_COLOR: Record<ActionStatus, string> = {
-  pending: theme.primary,
-  running: theme.primary,
-  complete: theme.settled,
-  cancelled: theme.warning,
-  error: theme.danger,
-};
+export function dotColor(status: ActionStatus): string {
+  switch (status) {
+    case "pending":
+    case "running":
+      return theme.primary;
+    case "complete":
+      return theme.settled;
+    case "cancelled":
+      return theme.warning;
+    case "error":
+      return theme.danger;
+  }
+}
 
 export function oneLineParams(params: Record<string, unknown>): string {
   const parts = Object.entries(params).map(([k, v]) => {

@@ -3,9 +3,9 @@ import React from "react";
 import type { ActionPart } from "@fifthrevision/axle/ui";
 import { TurnView } from "./TurnView.js";
 import type { DisplayMode } from "./display.js";
-import { DOT, DOT_COLOR, oneLineParams, resultToText, tailLines } from "./render.js";
+import { DOT, dotColor, oneLineParams, resultToText, tailLines } from "./render.js";
 import { ThemeText } from "./ThemeText.js";
-import { resolveColor, theme } from "./theme.js";
+import { resolveColor, theme, useTheme } from "./theme.js";
 
 const MAX_RESULT_LINES = 10;
 
@@ -26,6 +26,8 @@ function actionLabel(part: ActionPart): { name: string; detailText: string } {
 }
 
 export const ActionBlock = React.memo(function ActionBlock({ part, display = "verbose" }: { part: ActionPart; display?: DisplayMode }) {
+  // Re-render on live theme changes — memo'd otherwise.
+  useTheme();
   const status = part.status;
   const { name, detailText } = actionLabel(part);
   const { text, tone } = resultToText(part.detail.result);
@@ -46,7 +48,7 @@ export const ActionBlock = React.memo(function ActionBlock({ part, display = "ve
           {/* Landed steps dim (the turn's final text keeps its bright dot in
             TurnView); pending/running stay bright as the live marker, and
             cancelled/error stay bright because they're the alarm. */}
-        <Text color={DOT_COLOR[status]} dimColor={status === "complete"}>{DOT}</Text>
+        <Text color={dotColor(status)} dimColor={status === "complete"}>{DOT}</Text>
         </Box>
         <Box flexShrink={0} marginLeft={1}>
           <Text color={resolveColor(theme.settled).color}>{name}</Text>

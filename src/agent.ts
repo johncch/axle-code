@@ -24,14 +24,17 @@ const COMPACTION_PROMPT =
   "Use short bullet points.";
 
 /**
- * Auto-compaction thresholds. Before each turn the engine estimates context
- * usage; once it crosses `THRESHOLD_TOKENS` the {@link PromptCompactor} runs
- * and shrinks the active conversation toward `TARGET_TOKENS`, preserving the
- * most recent user messages verbatim. Well below any modern model's window, so
- * a session can continue indefinitely without hitting a provider limit.
+ * Auto-compaction threshold. Before each turn the engine estimates context
+ * usage; once it crosses this the {@link PromptCompactor} runs. Since Axle
+ * 0.31 the compaction sizes itself from the threshold: the summary targets
+ * the library default of 1000 words, and recent user messages are kept
+ * verbatim up to {@link COMPACTION_APPENDIX_TOKENS}. Well below any modern
+ * model's window, so a session can continue indefinitely without hitting a
+ * provider limit.
  */
 const COMPACTION_THRESHOLD_TOKENS = 100_000;
-const COMPACTION_TARGET_TOKENS = 30_000;
+/** Token budget for the recent user messages kept verbatim after a compaction. */
+const COMPACTION_APPENDIX_TOKENS = 10_000;
 /** Provider-managed web search. */
 const WEB_SEARCH_PROVIDER_TOOL: ProviderTool = { type: "provider", name: "web_search" };
 
@@ -40,18 +43,14 @@ const WEB_SEARCH_PROVIDER_TOOL: ProviderTool = { type: "provider", name: "web_se
 // streaming `thinking:delta`, so thinking only appears once it is finished.
 const WEB_SEARCH_ENABLED = false;
 
-/** Recent user messages kept verbatim after a compaction, for continuity. */
-const COMPACTION_RECENT_USER_MESSAGES = 10;
-
 export interface AgentFactoryOptions {
   tools?: ExecutableTool[];
   system?: string;
   /**
    * Auto-compaction tuning, from user settings. `threshold` is the size
-   * at which compaction triggers before a turn; `target` is what the
-   * conversation shrinks toward. Omit to use the defaults.
+   * at which compaction triggers before a turn. Omit to use the default.
    */
-  compaction?: { threshold?: number; target?: number };
+  compaction?: { threshold?: number };
 }
 
 /**
@@ -68,7 +67,6 @@ export function makeAgentFactory(options: AgentFactoryOptions = {}) {
   const system = options.system ?? SYSTEM_PROMPT;
   const thresholdTokens =
     options.compaction?.threshold ?? COMPACTION_THRESHOLD_TOKENS;
-  const targetTokens = options.compaction?.target ?? COMPACTION_TARGET_TOKENS;
   const createAgent = (entry: ModelEntry, session?: AgentSession): Agent => {
     if (!entry.provider) {
       throw new Error(`${entry.label} is unavailable — set ${entry.keyEnv}.`);
@@ -79,8 +77,11 @@ export function makeAgentFactory(options: AgentFactoryOptions = {}) {
       model: entry.model,
       prompt: COMPACTION_PROMPT,
       thresholdTokens,
-      targetTokens,
-      recentUserMessages: COMPACTION_RECENT_USER_MESSAGES,
+      // 0.31 sizing: the summary targets its 1000-word default (omitted), and
+      // recent user messages get an explicit token budget. Set explicitly so
+      // a user-raised threshold doesn't silently scale the appendix with it
+      // (the library default would be thresholdTokens / 10).
+      appendixTokens: COMPACTION_APPENDIX_TOKENS,
     });
     const agent = new Agent(
       {
